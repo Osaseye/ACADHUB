@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Sidebar } from '../../../components/layout/Sidebar';
+import { useSidebar } from '../../../hooks/useSidebar';
 
 export const DashboardPage = () => {
-    const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+    const { isSidebarCollapsed, toggleSidebar } = useSidebar();
 
     return (
         <div className="flex h-screen overflow-hidden bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark font-sans transition-colors duration-200">
@@ -10,7 +11,7 @@ export const DashboardPage = () => {
             {/* Sidebar Navigation */}
             <Sidebar 
                 isCollapsed={isSidebarCollapsed} 
-                toggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)} 
+                toggleSidebar={toggleSidebar} 
             />
 
             {/* Main Content Area */}

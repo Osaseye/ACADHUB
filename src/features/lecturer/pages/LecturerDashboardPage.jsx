@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { Sidebar } from '../../../components/layout/Sidebar';
+import { useSidebar } from '../../../hooks/useSidebar';
 import { Link } from 'react-router-dom';
 
 export const LecturerDashboardPage = () => {
-    const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+    const { isSidebarCollapsed, toggleSidebar } = useSidebar();
 
     // Mock Data
     const pendingRequests = 3;
