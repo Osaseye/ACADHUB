@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Sidebar } from '../../../components/layout/Sidebar';
+import { useSidebar } from '../../../hooks/useSidebar';
 
 export const MyUploadsPage = () => {
-    const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+    const { isSidebarCollapsed, toggleSidebar } = useSidebar();
 
     // Nigerian Context Data
     const myUploads = [
@@ -52,7 +53,7 @@ export const MyUploadsPage = () => {
         <div className="flex h-screen overflow-hidden bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark font-sans transition-colors duration-200">
             <Sidebar 
                 isCollapsed={isSidebarCollapsed} 
-                toggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)} 
+                toggleSidebar={toggleSidebar} 
             />
 
             <main className="flex-1 overflow-y-auto bg-background-light dark:bg-background-dark p-4 sm:p-8">

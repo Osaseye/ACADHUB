@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { Sidebar } from '../../../components/layout/Sidebar';
+import { useSidebar } from '../../../hooks/useSidebar';
 
 export const NotificationsPage = () => {
-    const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+    const { isSidebarCollapsed, toggleSidebar } = useSidebar();
     
     // Notifications Mock Data
     const notifications = [

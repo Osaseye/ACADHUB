@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Sidebar } from '../../../components/layout/Sidebar';
+import { useSidebar } from '../../../hooks/useSidebar';
 import { toast } from 'sonner';
 
 export const SettingsPage = () => {
-    const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+    const { isSidebarCollapsed, toggleSidebar } = useSidebar();
     
     // Theme State
     const [isDarkMode, setIsDarkMode] = useState(() => {

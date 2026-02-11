@@ -138,5 +138,6 @@ export const Sidebar = ({ isCollapsed, toggleSidebar, role = 'student' }) => {
                 </button>
             </div>
         </aside>
+        </>
     );
 };

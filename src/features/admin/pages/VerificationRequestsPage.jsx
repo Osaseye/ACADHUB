@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { Sidebar } from '../../../components/layout/Sidebar';
+import { useSidebar } from '../../../hooks/useSidebar';
 import { Link } from 'react-router-dom';
 import { toast } from "sonner";
 
 export const VerificationRequestsPage = () => {
-    const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+    const { isSidebarCollapsed, toggleSidebar } = useSidebar();
     const [selectedRequest, setSelectedRequest] = useState(null); // For modal/detail view
 
     // Mock Requests
@@ -30,7 +31,7 @@ export const VerificationRequestsPage = () => {
         <div className="flex h-screen overflow-hidden bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark font-sans transition-colors duration-200">
             <Sidebar 
                 isCollapsed={isSidebarCollapsed} 
-                toggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)} 
+                toggleSidebar={toggleSidebar} 
                 role="admin"
             />
 

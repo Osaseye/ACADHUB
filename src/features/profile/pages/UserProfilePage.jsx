@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Sidebar } from '../../../components/layout/Sidebar';
+import { useSidebar } from '../../../hooks/useSidebar';
 
 export const UserProfilePage = () => {
     const { userId } = useParams();
-    const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+    const { isSidebarCollapsed, toggleSidebar } = useSidebar();
 
     return (
         <div className="flex h-screen overflow-hidden bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark font-sans">
             <Sidebar 
                 isCollapsed={isSidebarCollapsed} 
-                toggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)} 
+                toggleSidebar={toggleSidebar} 
             />
             <main className="flex-1 overflow-y-auto p-8">
                 <div className="max-w-4xl mx-auto">

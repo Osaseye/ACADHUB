@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Sidebar } from '../../../components/layout/Sidebar';
+import { useSidebar } from '../../../hooks/useSidebar';
 import { Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -28,7 +29,7 @@ ChartJS.register(
 
 export const RepositoryDetailPage = () => {
     const { id } = useParams();
-    const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+    const { isSidebarCollapsed, toggleSidebar } = useSidebar();
     const [activeTab, setActiveTab] = useState('overview');
 
     // Chart Data
@@ -93,7 +94,7 @@ export const RepositoryDetailPage = () => {
         <div className="flex h-screen overflow-hidden bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark font-sans transition-colors duration-200">
             <Sidebar 
                 isCollapsed={isSidebarCollapsed} 
-                toggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)} 
+                toggleSidebar={toggleSidebar} 
             />
 
             <main className="flex-1 overflow-y-auto bg-background-light dark:bg-background-dark">

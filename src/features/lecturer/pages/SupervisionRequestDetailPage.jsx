@@ -1,9 +1,11 @@
 import React from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Sidebar } from '../../../components/layout/Sidebar';
+import { useSidebar } from '../../../hooks/useSidebar';
 import { toast } from 'sonner';
 
 export const SupervisionRequestDetailPage = () => {
+    const { isSidebarCollapsed, toggleSidebar } = useSidebar();
     const { requestId } = useParams();
     const navigate = useNavigate();
 
@@ -38,7 +40,11 @@ Several studies have addressed the challenge of efficient deep learning. Han et 
 
     return (
         <div className="flex h-screen bg-gray-50 font-sans text-slate-800 overflow-hidden">
-            <Sidebar role="lecturer" />
+            <Sidebar 
+                role="lecturer" 
+                isCollapsed={isSidebarCollapsed}
+                toggleSidebar={toggleSidebar}
+            />
 
             <div className="flex-1 flex flex-col h-screen overflow-hidden">
                 {/* Header / Breadcrumbs */}
