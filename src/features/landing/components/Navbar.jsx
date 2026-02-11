@@ -1,28 +1,88 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { Button } from "../../../components/ui/Button";
 import { useTheme } from "../../../hooks/useTheme";
 
+const navItems = [
+  { label: "Product", href: "#product" },
+  { label: "Solutions", href: "#solutions" },
+  { label: "Open Source", href: "#open-source" },
+  { label: "Pricing", href: "#pricing" },
+];
+
 export const Navbar = () => {
   const { theme, toggleTheme } = useTheme();
+  const [activeSection, setActiveSection] = useState("");
+  const [scrolled, setScrolled] = useState(false);
+
+  // Handle active active section state on scroll
+  useEffect(() => {
+    const handleScroll = () => {
+      // Background blur toggle
+      setScrolled(window.scrollY > 20);
+
+      // Active section detection
+      const sections = navItems.map(item => item.href.substring(1));
+      let current = "";
+
+      for (const sectionId of sections) {
+        const element = document.getElementById(sectionId);
+        if (element) {
+           const rect = element.getBoundingClientRect();
+           // If section top is near the top of viewport (e.g., within 150px)
+           // OR if we are deep inside the section
+           if (rect.top <= 150 && rect.bottom >= 150) {
+             current = sectionId;
+           }
+        }
+      }
+      setActiveSection("#" + current);
+    };
+
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  const handleNavClick = (e, href) => {
+    e.preventDefault();
+    const targetId = href.substring(1);
+    const element = document.getElementById(targetId);
+    if (element) {
+      window.scrollTo({
+        top: element.offsetTop - 80, // Offset for sticky header
+        behavior: "smooth"
+      });
+      setActiveSection(href);
+    }
+  };
 
   return (
-    <nav className="sticky top-0 z-50 bg-white/90 dark:bg-[#0d1117]/90 backdrop-blur-md border-b border-border-light dark:border-border-dark px-6 py-3">
-      <div className="max-w-[1280px] mx-auto flex items-center justify-between">
+    <nav className={`sticky top-0 z-50 transition-all duration-300 ${scrolled ? "bg-white/90 dark:bg-[#0d1117]/90 backdrop-blur-md border-b border-border-light dark:border-border-dark shadow-sm" : "bg-transparent border-b border-transparent py-4"}`}>
+      <div className="max-w-[1280px] mx-auto flex items-center justify-between px-6 py-2">
         <div className="flex items-center gap-6">
           <a className="flex items-center gap-2 group" href="#">
             {/* Logo */}
             <div className="relative w-8 h-8 flex items-center justify-center">
                 <img src="/icon.png" alt="AcadHub Logo" className="w-8 h-8 object-contain" />
             </div>
-            <span className="text-xl font-bold tracking-tight text-text-light dark:text-white group-hover:text-primary transition-colors">
+            <span className="text-xl font-bold tracking-tight text-text-light dark:text-white group-hover:t ext-primary transition-colors">
               AcadHub
             </span>
           </a>
           <div className="hidden md:flex gap-6 text-sm font-semibold text-text-light dark:text-text-dark">
-            <a className="hover:text-primary transition-colors" href="#">Product</a>
-            <a className="hover:text-primary transition-colors" href="#">Solutions</a>
-            <a className="hover:text-primary transition-colors" href="#">Open Source</a>
-            <a className="hover:text-primary transition-colors" href="#">Pricing</a>
+            {navItems.map((item) => (
+               <a 
+                 key={item.label}
+                 href={item.href}
+                 onClick={(e) => handleNavClick(e, item.href)}
+                 className={`relative py-1 transition-colors hover:text-primary ${activeSection === item.href ? "text-primary" : ""}`}
+               >
+                 {item.label}
+                 {activeSection === item.href && (
+                    <span className="absolute bottom-0 left-0 w-full h-0.5 bg-primary rounded-full transition-all duration-300" />
+                 )}
+               </a>
+            ))}
           </div>
         </div>
 
@@ -56,12 +116,14 @@ export const Navbar = () => {
               {theme === "dark" ? "light_mode" : "dark_mode"}
             </span>
           </button>
-          <button className="hidden sm:flex text-sm font-semibold text-text-light dark:text-white hover:text-text-muted-light dark:hover:text-text-muted-dark transition-colors">
+          <Link to="/login" className="hidden sm:flex text-sm font-semibold text-text-light dark:text-white hover:text-text-muted-light dark:hover:text-text-muted-dark transition-colors">
             Sign in
-          </button>
-           <Button variant="outline" size="small" className="text-gray-900 dark:text-gray-300 bg-transparent hover:bg-surface-light border-border-light">
-             Sign up
-           </Button>
+          </Link>
+          <Link to="/register">
+             <Button variant="outline" size="small" className="text-gray-900 bg-transparent dark:text-white hover:bg-surface-light border-border-light">
+               Sign up
+             </Button>
+          </Link>
         </div>
       </div>
     </nav>
