@@ -1,7 +1,26 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { 
+    doc, 
+    getDoc, 
+    updateDoc, 
+    increment, 
+    addDoc, 
+    collection, 
+    query, 
+    where, 
+    deleteDoc,
+    getDocs
+} from 'firebase/firestore';
+import { db, app } from '../../../config/firebase';
+import { useAuth } from '../../../context/AuthContext';
+import { toast } from 'sonner';
+import ReactMarkdown from 'react-markdown';
+// Attempting to use the preview path if the main one is missing in the installed version
+import { getAI, getGenerativeModel, VertexAIBackend } from "firebase/ai";
 import { Sidebar } from '../../../components/layout/Sidebar';
 import { useSidebar } from '../../../hooks/useSidebar';
+import { PageLoader } from '../../../components/common/PageLoader';
 import { Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -30,31 +49,177 @@ ChartJS.register(
 export const RepositoryDetailPage = () => {
     const { id } = useParams();
     const { isSidebarCollapsed, toggleSidebar } = useSidebar();
+    const { currentUser } = useAuth();
     const [activeTab, setActiveTab] = useState('overview');
+    const [project, setProject] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [aiInsight, setAiInsight] = useState('');
+    const [generatingInsight, setGeneratingInsight] = useState(false);
+    const [insightError, setInsightError] = useState(null);
+    const [isSaved, setIsSaved] = useState(false);
 
-    // Chart Data
+    useEffect(() => {
+        const checkSavedStatus = async () => {
+            if (currentUser && project) {
+                try {
+                    const q = query(
+                        collection(db, 'saved_items'),
+                        where('userId', '==', currentUser.uid),
+                        where('projectId', '==', project.id)
+                    );
+                    const querySnapshot = await getDocs(q);
+                    setIsSaved(!querySnapshot.empty);
+                } catch (error) {
+                    console.error("Error checking saved status:", error);
+                }
+            }
+        };
+
+        checkSavedStatus();
+    }, [currentUser, project]);
+
+    const handleSaveProject = async () => {
+        if (!currentUser) {
+            toast.error("Please login to save projects.");
+            return;
+        }
+
+        try {
+            if (isSaved) {
+                // Remove from saved
+                const q = query(
+                    collection(db, 'saved_items'),
+                    where('userId', '==', currentUser.uid),
+                    where('projectId', '==', project.id)
+                );
+                const querySnapshot = await getDocs(q);
+                
+                const deletePromises = querySnapshot.docs.map(docSnap => 
+                    deleteDoc(doc(db, 'saved_items', docSnap.id))
+                );
+                await Promise.all(deletePromises);
+                
+                setIsSaved(false);
+                toast.success("Project removed from saved items.");
+            } else {
+                // Add to saved
+                await addDoc(collection(db, 'saved_items'), {
+                    userId: currentUser.uid,
+                    projectId: project.id,
+                    projectTitle: project.title,
+                    savedAt: new Date()
+                });
+                setIsSaved(true);
+                toast.success("Project saved successfully!");
+            }
+        } catch (error) {
+            console.error("Error toggling save:", error);
+            toast.error("Failed to update saved status.");
+        }
+    };
+
+    const handleCite = () => {
+        if (!project) return;
+        const year = project.year || new Date().getFullYear();
+        const author = project.studentName || "Author";
+        const title = project.title || "Untitled Project";
+        const citation = `${author}. (${year}). ${title}. AcadHub.`;
+        
+        navigator.clipboard.writeText(citation).then(() => {
+            toast.success("Citation copied to clipboard!");
+        }).catch(err => {
+            console.error('Failed to copy: ', err);
+            toast.error("Failed to copy citation.");
+        });
+    };
+
+    const handleDownload = async () => {
+        if (!project) return;
+        
+        try {
+            const projectRef = doc(db, 'projects', project.id);
+            await updateDoc(projectRef, {
+                downloads: increment(1)
+            });
+            // Update local state to reflect new download count immediately
+            setProject(prev => ({
+                ...prev,
+                downloads: (prev.downloads || 0) + 1
+            }));
+            
+            // The actual download happens via the link's href, so we don't need to trigger it here.
+            // But we can show a toast.
+            toast.success("Download started.");
+        } catch (error) {
+            console.error("Error updating download count:", error);
+        }
+    };
+
+    const generateInsight = async () => {
+        if (!project || !project.abstract || aiInsight || generatingInsight) return;
+
+        setGeneratingInsight(true);
+        setInsightError(null);
+        try {
+            const ai = getAI(app, { backend: new VertexAIBackend() });
+            const model = getGenerativeModel(ai, { model: "gemini-2.0-flash-lite-001" });
+            const prompt = `Analyze the following academic project abstract and provide 3 key insights or potential impact areas:\n\nTitle: ${project.title}\nAbstract: ${project.abstract}`;
+            
+            const result = await model.generateContent(prompt);
+            const response = await result.response;
+            const text = response.text();
+            setAiInsight(text);
+        } catch (error) {
+            console.error("Error generating insight:", error);
+            setInsightError("Failed to generate insights. Please try again later. Ensure Firebase Vertex AI is enabled.");
+        } finally {
+            setGeneratingInsight(false);
+        }
+    };
+
+    useEffect(() => {
+        if (activeTab === 'ai-insights' && project && !aiInsight) {
+            generateInsight();
+        }
+    }, [activeTab, project]);
+
+    useEffect(() => {
+        const fetchProject = async () => {
+            try {
+                const docRef = doc(db, 'projects', id);
+                const docSnap = getDoc(docRef);
+                const docData = await docSnap;
+
+                if (docData.exists()) {
+                    setProject({ id: docData.id, ...docData.data() });
+                } else {
+                    console.log("No such document!");
+                    setProject(null);
+                }
+            } catch (error) {
+                console.error("Error fetching project:", error);
+                setProject(null);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchProject();
+    }, [id]);
+
+    // Chart Data (Static for now as requested)
     const chartData = {
-        labels: ['2019', '2020', '2021', '2022', '2023', '2024'],
-        datasets: [{
-            label: 'Citations',
-            data: [2, 5, 12, 28, 42, 55],
-            borderColor: '#0ea5e9',
-            backgroundColor: (context) => {
-                const ctx = context.chart.ctx;
-                const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-                gradient.addColorStop(0, 'rgba(14, 165, 233, 0.2)');
-                gradient.addColorStop(1, 'rgba(14, 165, 233, 0)');
-                return gradient;
-            },
-            borderWidth: 2,
-            tension: 0.4,
-            fill: true,
-            pointBackgroundColor: '#ffffff',
-            pointBorderColor: '#0ea5e9',
-            pointBorderWidth: 2,
-            pointRadius: 4,
-            pointHoverRadius: 6
-        }]
+        labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+        datasets: [
+            {
+                label: 'Monthly Views',
+                data: [65, 59, 80, 81, 56, 55],
+                fill: true,
+                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                borderColor: 'rgb(59, 130, 246)',
+                tension: 0.4
+            }
+        ]
     };
 
     const chartOptions = {
@@ -62,33 +227,38 @@ export const RepositoryDetailPage = () => {
         maintainAspectRatio: false,
         plugins: {
             legend: { display: false },
-            tooltip: {
-                mode: 'index',
-                intersect: false,
-                backgroundColor: '#1e293b',
-                titleColor: '#f8fafc',
-                bodyColor: '#cbd5e1',
-                borderColor: '#334155',
-                borderWidth: 1
-            }
+            tooltip: { enabled: true }
         },
         scales: {
-            y: {
-                beginAtZero: true,
-                grid: { color: '#e2e8f0', borderDash: [4, 4] },
-                ticks: { color: '#64748b' }
-            },
-            x: {
-                grid: { display: false },
-                ticks: { color: '#64748b' }
-            }
-        },
-        interaction: {
-            mode: 'nearest',
-            axis: 'x',
-            intersect: false
+            y: { display: false },
+            x: { display: false }
         }
     };
+
+    if (loading) {
+        return (
+            <div className="flex h-screen overflow-hidden bg-background-light dark:bg-background-dark">
+                <Sidebar isCollapsed={isSidebarCollapsed} toggleSidebar={toggleSidebar} />
+                <main className="flex-1 flex items-center justify-center">
+                    <PageLoader />
+                </main>
+            </div>
+        );
+    }
+
+    if (!project) {
+        return (
+            <div className="flex h-screen overflow-hidden bg-background-light dark:bg-background-dark">
+                <Sidebar isCollapsed={isSidebarCollapsed} toggleSidebar={toggleSidebar} />
+                <main className="flex-1 overflow-y-auto bg-background-light dark:bg-background-dark p-8">
+                    <div className="max-w-7xl mx-auto text-center">
+                         <h1 className="text-2xl font-bold text-text-light dark:text-text-dark">Project not found</h1>
+                         <Link to="/repository" className="text-primary hover:underline mt-4 inline-block">Back to Repository</Link>
+                    </div>
+                </main>
+            </div>
+        );
+    }
 
     return (
         <div className="flex h-screen overflow-hidden bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark font-sans transition-colors duration-200">
@@ -112,7 +282,7 @@ export const RepositoryDetailPage = () => {
                             </li>
                             <li className="flex items-center">
                                 <span className="material-symbols-outlined text-[16px] mx-1">chevron_right</span>
-                                <span className="text-text-light dark:text-white" aria-current="page">Privacy-Preserving Medical Imaging</span>
+                                <span className="text-text-light dark:text-white truncate max-w-[200px]" aria-current="page">{project.title}</span>
                             </li>
                         </ol>
                     </nav>
@@ -122,54 +292,77 @@ export const RepositoryDetailPage = () => {
                         <div className="lg:flex lg:items-start lg:justify-between">
                             <div className="flex-1 min-w-0">
                                 <div className="flex flex-wrap items-center gap-2 mb-3">
-                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200 border border-blue-200 dark:border-blue-800">
-                                        PhD Thesis
-                                    </span>
-                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-                                        2023
-                                    </span>
-                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-200 border border-purple-200 dark:border-purple-800">
-                                        <span className="material-symbols-outlined !text-[14px]">psychology</span> Computer Science
-                                    </span>
-                                    <span className="font-mono text-xs text-text-muted-light dark:text-text-muted-dark ml-2">ID: <span className="select-all">CS-2023-8921</span></span>
+                                    {project.type && (
+                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200 border border-blue-200 dark:border-blue-800">
+                                            {project.type}
+                                        </span>
+                                    )}
+                                    {project.year && (  
+                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                                            {project.year}
+                                        </span>
+                                    )}
+                                    {project.department && (
+                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-200 border border-purple-200 dark:border-purple-800">
+                                            <span className="material-symbols-outlined !text-[14px]">school</span> {project.department}
+                                        </span>
+                                    )}
+                                    <span className="font-mono text-xs text-text-muted-light dark:text-text-muted-dark ml-2">ID: <span className="select-all">{project.id?.substring(0, 8)}...</span></span>
                                 </div>
                                 <h1 className="text-2xl sm:text-3xl font-bold leading-7 text-text-light dark:text-white sm:truncate sm:tracking-tight mb-2">
-                                    Federated Learning Approaches for Privacy-Preserving Medical Imaging Analysis
+                                    {project.title}
                                 </h1>
                                 <div className="flex flex-col sm:flex-row sm:flex-wrap sm:mt-0 sm:space-x-6">
                                     <div className="mt-2 flex items-center text-sm text-text-muted-light dark:text-text-muted-dark">
                                         <span className="material-symbols-outlined mr-1.5 text-[18px]">person</span>
-                                        <span className="hover:underline text-primary cursor-pointer">Sarah Jenkins</span>, <span className="hover:underline text-primary cursor-pointer">Dr. Alan Turing (Sup.)</span>
+                                        <span className="text-text-light dark:text-white font-medium">{project.studentName || 'Unknown Author'}</span>
                                     </div>
-                                    <div className="mt-2 flex items-center text-sm text-text-muted-light dark:text-text-muted-dark">
-                                        <span className="material-symbols-outlined mr-1.5 text-[18px]">account_balance</span>
-                                        University of Lagos
-                                    </div>
+                                    {project.supervisorName && (
+                                        <div className="mt-2 flex items-center text-sm text-text-muted-light dark:text-text-muted-dark">
+                                            <span className="material-symbols-outlined mr-1.5 text-[18px]">supervisor_account</span>
+                                            Sup: {project.supervisorName}
+                                        </div>
+                                    )}
                                     <div className="mt-2 flex items-center text-sm text-green-600 dark:text-green-400">
                                         <span className="material-symbols-outlined mr-1.5 text-[18px]">check_circle</span>
-                                        Peer Reviewed
+                                        {project.status || 'Active'}
                                     </div>
                                 </div>
                             </div>
                             <div className="mt-5 flex lg:mt-0 lg:ml-4 gap-3">
+                                {/* Action buttons */}
                                 <span className="hidden sm:block">
-                                    <button className="inline-flex items-center px-4 py-2 border border-border-light dark:border-border-dark rounded-md shadow-sm text-sm font-medium text-text-light dark:text-text-dark bg-white dark:bg-[#21262d] hover:bg-slate-50 dark:hover:bg-[#30363d] focus:outline-none transition-colors" type="button">
-                                        <span className="material-symbols-outlined mr-2 !text-lg">bookmark</span>
-                                        Save
+                                    <button 
+                                        onClick={handleSaveProject}
+                                        className={`inline-flex items-center px-4 py-2 border border-border-light dark:border-border-dark rounded-md shadow-sm text-sm font-medium ${isSaved ? 'text-primary bg-primary/10 border-primary' : 'text-text-light dark:text-text-dark bg-white dark:bg-[#21262d] hover:bg-slate-50 dark:hover:bg-[#30363d]'} focus:outline-none transition-colors`}
+                                        type="button"
+                                    >
+                                        <span className={`material-symbols-outlined mr-2 !text-lg ${isSaved ? 'fill-current' : ''}`}>bookmark</span>
+                                        {isSaved ? 'Saved' : 'Save'}
                                     </button>
                                 </span>
                                 <span className="hidden sm:block">
-                                    <button className="inline-flex items-center px-4 py-2 border border-border-light dark:border-border-dark rounded-md shadow-sm text-sm font-medium text-text-light dark:text-text-dark bg-white dark:bg-[#21262d] hover:bg-slate-50 dark:hover:bg-[#30363d] focus:outline-none transition-colors" type="button">
+                                    <button 
+                                        onClick={handleCite}
+                                        className="inline-flex items-center px-4 py-2 border border-border-light dark:border-border-dark rounded-md shadow-sm text-sm font-medium text-text-light dark:text-text-dark bg-white dark:bg-[#21262d] hover:bg-slate-50 dark:hover:bg-[#30363d] focus:outline-none transition-colors" type="button">
                                         <span className="material-symbols-outlined mr-2 !text-lg">format_quote</span>
                                         Cite
                                     </button>
                                 </span>
-                                <span className="sm:ml-3">
-                                    <button className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none transition-colors" type="button">
-                                        <span className="material-symbols-outlined mr-2 !text-lg">download</span>
-                                        Download PDF
-                                    </button>
-                                </span>
+                                {project.fileUrl && (
+                                    <span className="sm:ml-3">
+                                        <a 
+                                            href={project.fileUrl} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer"
+                                            onClick={handleDownload}
+                                            className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary hover:bg-primary/90 focus:outline-none transition-colors"
+                                        >
+                                            <span className="material-symbols-outlined mr-2 !text-lg">download</span>
+                                            Download PDF
+                                        </a>
+                                    </span>
+                                )}
                             </div>
                         </div>
                         
@@ -214,212 +407,248 @@ export const RepositoryDetailPage = () => {
                                 <h2 className="text-lg font-semibold text-text-light dark:text-white mb-4 flex items-center">Abstract</h2>
                                 <div className="prose dark:prose-invert max-w-none text-text-muted-light dark:text-text-muted-dark text-sm leading-relaxed text-justify">
                                     <p>
-                                        Medical imaging analysis using deep learning has achieved remarkable success in recent years. However, the sensitive nature of patient data creates significant hurdles for centralized data collection, which is typically required for training robust models. This thesis proposes a novel Federated Learning (FL) framework tailored for medical imaging that enables collaborative model training without sharing raw patient data.
-                                    </p>
-                                    <p className="mt-4">
-                                        We introduce a dynamic aggregation algorithm that accounts for the non-IID (Independent and Identically Distributed) nature of medical data across different hospitals. Our experiments on three public datasets demonstrate that our approach achieves accuracy comparable to centralized training while preserving differential privacy guarantees. Furthermore, we present a lightweight client-side architecture suitable for deployment on edge devices within hospital networks.
+                                        {project.abstract || 'No abstract available.'}
                                     </p>
                                 </div>
                                 <div className="mt-6 flex flex-wrap gap-2">
-                                    {['Federated Learning', 'Medical Imaging', 'Differential Privacy', 'Deep Learning'].map(tag => (
-                                        <span key={tag} className="px-3 py-1 rounded-md bg-gray-100 dark:bg-gray-800 text-text-muted-light dark:text-text-muted-dark text-xs font-medium border border-border-light dark:border-border-dark">
-                                            {tag}
-                                        </span>
-                                    ))}
+                                    {project.keywords ? (
+                                        project.keywords.split(',').map((keyword, index) => (
+                                            <span key={index} className="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200 border border-gray-200 dark:border-gray-700">
+                                                {keyword.trim()}
+                                            </span>
+                                        ))
+                                    ) : (
+                                        <span className="text-xs text-text-muted-light dark:text-text-muted-dark italic">No keywords</span>
+                                    )}
                                 </div>
                             </section>
 
                             {/* Full Document Tab */}
-                            {activeTab === 'full-doc' ? (
-                                <section className="bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-lg shadow-sm p-8 text-center">
-                                    <div className="mx-auto w-24 h-24 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-full flex items-center justify-center mb-6">
-                                        <span className="material-symbols-outlined text-5xl">picture_as_pdf</span>
-                                    </div>
-                                    <h3 className="text-xl font-semibold text-text-light dark:text-white mb-2">Federated Learning Framework.pdf</h3>
-                                    <p className="text-text-muted-light dark:text-text-muted-dark mb-6">3.4 MB • Uploaded on Oct 24, 2023</p>
-                                    
-                                    <div className="flex justify-center gap-4">
-                                        <button className="flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-md hover:bg-sky-600 transition-colors shadow-sm font-medium">
-                                            <span className="material-symbols-outlined">download</span>
-                                            Download PDF
-                                        </button>
-                                        <button className="flex items-center gap-2 px-6 py-3 bg-white dark:bg-[#21262d] border border-border-light dark:border-border-dark text-text-light dark:text-text-dark rounded-md hover:bg-gray-50 dark:hover:bg-[#30363d] transition-colors font-medium">
-                                            <span className="material-symbols-outlined">visibility</span>
-                                            Preview
-                                        </button>
-                                    </div>
-                                </section>
-                            ) : null}
-
-                            {/* AI Insights Section */}
-                            {activeTab === 'ai-insights' || activeTab === 'overview' ? (
-                                <section className="bg-gradient-to-br from-indigo-50 to-white dark:from-[#161b22] dark:to-[#0d1117] border border-indigo-100 dark:border-indigo-900/30 rounded-lg shadow-sm p-6">
-                                    <div className="flex items-center justify-between mb-6">
-                                        <h2 className="text-lg font-semibold text-indigo-900 dark:text-indigo-300 flex items-center gap-2">
-                                            <span className="material-symbols-outlined">auto_awesome</span>
-                                            AI-Generated Insights
-                                        </h2>
-                                        <span className="text-xs font-mono text-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-1 rounded">Model: AcadGPT-4</span>
-                                    </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                        <div className="bg-white dark:bg-[#21262d] p-4 rounded-md border border-indigo-50 dark:border-border-dark shadow-sm">
-                                            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Key Findings</h3>
-                                            <ul className="space-y-3">
-                                                <li className="flex items-start gap-2">
-                                                    <span className="material-symbols-outlined text-green-500 text-lg mt-0.5">check_circle</span>
-                                                    <span className="text-sm text-slate-700 dark:text-slate-300">Achieved <strong className="text-slate-900 dark:text-white">94.5% accuracy</strong> on MRI classification without centralizing data.</span>
-                                                </li>
-                                                <li className="flex items-start gap-2">
-                                                    <span className="material-symbols-outlined text-green-500 text-lg mt-0.5">check_circle</span>
-                                                    <span className="text-sm text-slate-700 dark:text-slate-300">Reduced communication overhead by <strong className="text-slate-900 dark:text-white">40%</strong> using novel compression.</span>
-                                                </li>
-                                                <li className="flex items-start gap-2">
-                                                    <span className="material-symbols-outlined text-green-500 text-lg mt-0.5">check_circle</span>
-                                                    <span className="text-sm text-slate-700 dark:text-slate-300">Proven robustness against gradient leakage attacks.</span>
-                                                </li>
-                                            </ul>
-                                        </div>
-                                        <div className="space-y-4">
-                                            <div className="bg-white dark:bg-[#21262d] p-4 rounded-md border border-indigo-50 dark:border-border-dark shadow-sm">
-                                                <div className="flex justify-between items-center mb-1">
-                                                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Novelty Score</h3>
-                                                    <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400">8.5/10</span>
-                                                </div>
-                                                <div className="w-full bg-slate-100 dark:bg-slate-700 rounded-full h-2">
-                                                    <div className="bg-indigo-500 h-2 rounded-full" style={{ width: '85%' }}></div>
-                                                </div>
-                                                <p className="text-xs text-slate-500 mt-2">High novelty in aggregation algorithm design.</p>
-                                            </div>
-                                            <div className="bg-white dark:bg-[#21262d] p-4 rounded-md border border-indigo-50 dark:border-border-dark shadow-sm">
-                                                <div className="flex justify-between items-center mb-1">
-                                                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Sentiment</h3>
-                                                    <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">Positive</span>
-                                                </div>
-                                                <div className="flex gap-1 mt-2">
-                                                    <span className="h-1.5 w-full bg-emerald-500 rounded-full"></span>
-                                                    <span className="h-1.5 w-full bg-slate-200 dark:bg-slate-700 rounded-full"></span>
-                                                    <span className="h-1.5 w-full bg-slate-200 dark:bg-slate-700 rounded-full"></span>
-                                                </div>
-                                                <p className="text-xs text-slate-500 mt-2">Optimistic tone regarding future implementation.</p>
+                            {activeTab === 'full-doc' && (
+                                <section className="bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-lg shadow-sm p-4 sm:p-6 lg:p-8 text-center min-h-[500px]">
+                                    {project.fileUrl ? (
+                                        <div className="w-full h-full flex flex-col">
+                                             <div className="flex justify-between items-center mb-4">
+                                                <h3 className="text-xl font-semibold text-text-light dark:text-white">
+                                                    Full Document Preview
+                                                </h3>
+                                                <a 
+                                                    href={project.fileUrl} 
+                                                    target="_blank" 
+                                                    rel="noopener noreferrer"
+                                                    className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary hover:bg-primary/90 focus:outline-none transition-colors"
+                                                >
+                                                    <span className="material-symbols-outlined mr-2 !text-lg">download</span>
+                                                    Download
+                                                </a>
+                                             </div>
+                                            <div className="flex-1 w-full bg-gray-100 dark:bg-gray-800 rounded-lg overflow-hidden border border-border-light dark:border-border-dark">
+                                                {project.fileName?.toLowerCase().endsWith('.pdf') ? (
+                                                    <iframe 
+                                                        src={project.fileUrl} 
+                                                        className="w-full h-[800px]" 
+                                                        title="Project Document"
+                                                    >
+                                                        <p>Your browser does not support PDFs. <a href={project.fileUrl}>Download the PDF</a>.</p>
+                                                    </iframe>
+                                                ) : (
+                                                    <iframe 
+                                                        src={`https://docs.google.com/viewer?url=${encodeURIComponent(project.fileUrl)}&embedded=true`}
+                                                        className="w-full h-[800px]" 
+                                                        title="Project Document Viewer"
+                                                    >
+                                                        <p>Your browser cannot display this file. <a href={project.fileUrl}>Download the file</a>.</p>
+                                                    </iframe>
+                                                )}
                                             </div>
                                         </div>
-                                    </div>
+                                    ) : (
+                                        <div className="flex flex-col items-center justify-center h-full py-12">
+                                            <div className="mx-auto w-24 h-24 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-full flex items-center justify-center mb-6">
+                                                <span className="material-symbols-outlined text-5xl">picture_as_pdf</span>
+                                            </div>
+                                            <h3 className="text-xl font-semibold text-text-light dark:text-white mb-2">Document Unavailable</h3>
+                                            <p className="text-text-muted-light dark:text-text-muted-dark mb-6">File details pending or not uploaded.</p>
+                                        </div>
+                                    )}
                                 </section>
-                            ) : null}
+                            )}
 
-                            {/* Trends Chart */}
-                            {activeTab === 'trends' || activeTab === 'overview' ? (
+                            {/* Trends Tab (Keeping simplified view) */}
+                            {activeTab === 'trends' && (
                                 <section className="bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-lg shadow-sm p-6">
-                                    <h2 className="text-lg font-semibold text-text-light dark:text-white mb-4 flex items-center justify-between">
-                                        <span>Research Impact & Trends</span>
-                                        <div className="flex bg-slate-100 dark:bg-slate-800 rounded-lg p-1">
-                                            <button className="px-3 py-1 bg-white dark:bg-gray-700 rounded-md shadow-sm text-xs font-medium text-slate-800 dark:text-slate-200">Citations</button>
-                                            <button className="px-3 py-1 text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-slate-700">Downloads</button>
+                                    <h3 className="text-lg font-semibold text-text-light dark:text-white mb-6">Engagement Analytics</h3>
+                                    
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+                                        <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-800">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <span className="material-symbols-outlined text-blue-500">visibility</span>
+                                                <p className="text-sm text-blue-600 dark:text-blue-400 font-medium">Total Views</p>
+                                            </div>
+                                            <p className="text-3xl font-bold text-gray-900 dark:text-white mt-1">{project.views || 0}</p>
                                         </div>
-                                    </h2>
-                                    <div className="relative h-64 w-full">
+                                        <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-100 dark:border-green-800">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <span className="material-symbols-outlined text-green-500">download</span>
+                                                <p className="text-sm text-green-600 dark:text-green-400 font-medium">Downloads</p>
+                                            </div>
+                                            <p className="text-3xl font-bold text-gray-900 dark:text-white mt-1">{project.downloads || 0}</p>
+                                        </div>
+                                        {project.citations !== undefined && (
+                                            <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-100 dark:border-purple-800">
+                                                <div className="flex items-center gap-2 mb-1">
+                                                     <span className="material-symbols-outlined text-purple-500">format_quote</span>
+                                                    <p className="text-sm text-purple-600 dark:text-purple-400 font-medium">Citations</p>
+                                                </div>
+                                                <p className="text-3xl font-bold text-gray-900 dark:text-white mt-1">{project.citations}</p>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <p className="text-text-muted-light dark:text-text-muted-dark mb-4">View how this project is performing over time.</p>
+                                    <div className="h-64 w-full">
                                         <Line data={chartData} options={chartOptions} />
                                     </div>
-                                    <p className="text-xs text-center text-text-muted-light dark:text-text-muted-dark mt-4">Growth of citations for this topic over the last 5 years.</p>
                                 </section>
-                            ) : null}
+                            )}
+                            
+                             {/* AI Insights Tab */}
+                             {activeTab === 'ai-insights' && (
+                                <section className="bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-lg shadow-sm p-6 space-y-4">
+                                    <div className="flex items-center gap-3 mb-4">
+                                        <div className="p-2 bg-purple-100 dark:bg-purple-900/50 rounded-lg">
+                                            <span className="material-symbols-outlined text-purple-600 dark:text-purple-400">auto_awesome</span>
+                                        </div>
+                                        <h3 className="text-lg font-semibold text-text-light dark:text-white">AI-Generated Insights</h3>
+                                    </div>
+                                    
+                                    {generatingInsight ? (
+                                        <div className="flex flex-col items-center justify-center py-12 space-y-4">
+                                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
+                                            <p className="text-sm text-text-muted-light dark:text-text-muted-dark animate-pulse">Analyzing with Gemini AI...</p>
+                                        </div>
+                                    ) : insightError ? (
+                                        <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-md text-sm border border-red-200 dark:border-red-800">
+                                            <div className="flex items-center gap-2 font-medium mb-1">
+                                                <span className="material-symbols-outlined text-base">error</span>
+                                                Error
+                                            </div>
+                                            {insightError}
+                                             <button 
+                                                onClick={() => generateInsight()} 
+                                                className="mt-3 block px-3 py-1.5 bg-white dark:bg-red-950/50 border border-red-200 dark:border-red-800 rounded shadow-sm hover:bg-gray-50 dark:hover:bg-red-900/50 transition-colors"
+                                            >
+                                                Try Again
+                                            </button>
+                                        </div>
+                                    ) : aiInsight ? (
+                                        <div className="prose dark:prose-invert max-w-none text-text-muted-light dark:text-text-muted-dark text-sm leading-relaxed whitespace-pre-wrap">
+                                            <ReactMarkdown>
+                                                {aiInsight}
+                                            </ReactMarkdown>
+                                        </div>
+                                    ) : (
+                                        <div className="text-center py-8 text-text-muted-light dark:text-text-muted-dark">
+                                            <p>No insights generated yet.</p>
+                                            <button 
+                                                onClick={generateInsight}
+                                                className="mt-4 px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors text-sm font-medium"
+                                            >
+                                                Generate Analysis
+                                            </button>
+                                        </div>
+                                    )}
+                                    <div className="mt-6 pt-4 border-t border-border-light dark:border-border-dark flex justify-between items-center text-xs text-text-muted-light dark:text-text-muted-dark">
+                                        <span>Powered by Google Gemini</span>
+                                        <span>Analysis based on project abstract</span>
+                                    </div>
+                                </section>
+                            )}
                         </div>
 
-                        {/* Right Sidebar */}
-                        <aside className="space-y-6">
-                            {/* Project Details */}
-                            <div className="bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-lg shadow-sm overflow-hidden">
-                                <div className="bg-slate-50 dark:bg-[#21262d] px-4 py-3 border-b border-border-light dark:border-border-dark">
-                                    <h3 className="text-sm font-semibold text-text-light dark:text-white">Project Details</h3>
-                                </div>
-                                <div className="p-4 space-y-4">
-                                    <div>
-                                        <span className="text-xs font-medium text-text-muted-light dark:text-text-muted-dark uppercase tracking-wider block mb-1">Supervisor</span>
-                                        <div className="flex items-center gap-2">
-                                            <div className="h-8 w-8 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center text-indigo-700 dark:text-indigo-300 font-bold text-xs">AT</div>
-                                            <span className="text-sm text-text-light dark:text-white font-medium">Dr. Alan Turing</span>
-                                        </div>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <span className="text-xs font-medium text-text-muted-light dark:text-text-muted-dark uppercase tracking-wider block mb-1">Degree</span>
-                                            <span className="text-sm text-text-light dark:text-white">PhD</span>
+                        {/* Sidebar Information */}
+                        <div className="space-y-8">
+                            {/* Authors Card */}
+                            <section className="bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-lg shadow-sm p-6">
+                                <h3 className="text-sm font-semibold text-text-muted-light dark:text-text-muted-dark uppercase tracking-wider mb-4">Contributors</h3>
+                                <div className="space-y-4">
+                                    <Link to={`/profile/${project.studentId}`} className="flex items-center group cursor-pointer">
+                                        <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold mr-3">
+                                            {project.studentName?.charAt(0) || 'A'}
                                         </div>
                                         <div>
-                                            <span className="text-xs font-medium text-text-muted-light dark:text-text-muted-dark uppercase tracking-wider block mb-1">Department</span>
-                                            <span className="text-sm text-text-light dark:text-white">Computer Science</span>
+                                            <p className="text-sm font-medium text-text-light dark:text-white group-hover:text-primary transition-colors">{project.studentName}</p>
+                                            <p className="text-xs text-text-muted-light dark:text-text-muted-dark">Author</p>
                                         </div>
-                                    </div>
-                                    <div>
-                                        <span className="text-xs font-medium text-text-muted-light dark:text-text-muted-dark uppercase tracking-wider block mb-1">License</span>
-                                        <div className="flex items-center gap-1.5">
-                                            <span className="material-symbols-outlined text-text-muted-light dark:text-text-muted-dark text-sm">balance</span>
-                                            <span className="text-sm text-text-light dark:text-white">CC BY-NC 4.0</span>
-                                        </div>
-                                    </div>
-                                    <div className="pt-4 border-t border-border-light dark:border-border-dark grid grid-cols-3 gap-2 text-center">
-                                        <div>
-                                            <span className="block text-lg font-bold text-text-light dark:text-white">42</span>
-                                            <span className="text-xs text-text-muted-light dark:text-text-muted-dark">Citations</span>
-                                        </div>
-                                        <div>
-                                            <span className="block text-lg font-bold text-text-light dark:text-white">1.2k</span>
-                                            <span className="text-xs text-text-muted-light dark:text-text-muted-dark">Views</span>
-                                        </div>
-                                        <div>
-                                            <span className="block text-lg font-bold text-text-light dark:text-white">89</span>
-                                            <span className="text-xs text-text-muted-light dark:text-text-muted-dark">Downloads</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="bg-slate-50 dark:bg-[#21262d] px-4 py-3 border-t border-border-light dark:border-border-dark flex justify-between items-center cursor-pointer hover:bg-slate-100 dark:hover:bg-[#30363d] transition-colors">
-                                    <Link to="/profile/Dr.%20Alan%20Turing" className="text-xs font-medium text-primary hover:underline flex items-center gap-1 w-full">
-                                        <span className="material-symbols-outlined text-sm">person</span>
-                                        View Supervisor Profile
                                     </Link>
-                                    <span className="material-symbols-outlined text-text-muted-light dark:text-text-muted-dark text-sm">chevron_right</span>
-                                </div>
-                            </div>
-
-                            {/* Related Research */}
-                            <div className="bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-lg shadow-sm">
-                                <div className="px-4 py-3 border-b border-border-light dark:border-border-dark flex justify-between items-center">
-                                    <h3 className="text-sm font-semibold text-text-light dark:text-white">Related Research</h3>
-                                    <a href="#" className="text-xs text-primary hover:underline">View All</a>
-                                </div>
-                                <ul className="divide-y divide-border-light dark:divide-border-dark">
-                                    {[
-                                        { title: "Privacy-Preserving Machine Learning in Healthcare: A Survey", author: "M. Al-Rubaie et al.", year: "2021" },
-                                        { title: "Split Learning for Health: Distributed Deep Learning without Sharing Raw Patient Data", author: "P. Vepakomma et al.", year: "2018" },
-                                        { title: "Communication-Efficient Learning of Deep Networks from Decentralized Data", author: "H. McMahan et al.", year: "2017" }
-                                    ].map((item, idx) => (
-                                        <li key={idx} className="p-4 hover:bg-slate-50 dark:hover:bg-[#1f242c] transition-colors cursor-pointer group">
-                                            <h4 className="text-sm font-medium text-text-light dark:text-white group-hover:text-primary transition-colors line-clamp-2">
-                                                {item.title}
-                                            </h4>
-                                            <div className="mt-2 flex justify-between items-center">
-                                                <span className="text-xs text-text-muted-light dark:text-text-muted-dark">{item.author}</span>
-                                                <span className="text-xs bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 px-1.5 py-0.5 rounded">{item.year}</span>
+                                    {project.supervisorName && (
+                                        project.supervisorId ? (
+                                            <Link to={`/profile/${project.supervisorId}`} className="flex items-center group cursor-pointer">
+                                                <div className="h-10 w-10 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-400 font-bold mr-3">
+                                                    {project.supervisorName?.charAt(0) || 'S'}
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm font-medium text-text-light dark:text-white group-hover:text-primary transition-colors">{project.supervisorName}</p>
+                                                    <p className="text-xs text-text-muted-light dark:text-text-muted-dark">Supervisor</p>
+                                                </div>
+                                            </Link>
+                                        ) : (
+                                            <div className="flex items-center group cursor-pointer">
+                                                <div className="h-10 w-10 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-400 font-bold mr-3">
+                                                    {project.supervisorName?.charAt(0) || 'S'}
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm font-medium text-text-light dark:text-white group-hover:text-primary transition-colors">{project.supervisorName}</p>
+                                                    <p className="text-xs text-text-muted-light dark:text-text-muted-dark">Supervisor</p>
+                                                </div>
                                             </div>
-                                        </li>
+                                        )
+                                    )}
+                                    {project.coAuthors && Array.isArray(project.coAuthors) && project.coAuthors.map((coAuthor, idx) => (
+                                         <div key={idx} className="flex items-center group cursor-pointer">
+                                            <div className="h-10 w-10 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-400 font-bold mr-3">
+                                                {coAuthor.charAt(0)}
+                                            </div>
+                                            <div>
+                                                <p className="text-sm font-medium text-text-light dark:text-white group-hover:text-primary transition-colors">{coAuthor}</p>
+                                                <p className="text-xs text-text-muted-light dark:text-text-muted-dark">Co-Author</p>
+                                            </div>
+                                        </div>
                                     ))}
-                                </ul>
-                            </div>
+                                    {/* Fallback for coAuthors as string or comma separated if that's how it's stored */}
+                                     {project.coAuthors && typeof project.coAuthors === 'string' && project.coAuthors.split(',').map((coAuthor, idx) => (
+                                         <div key={idx} className="flex items-center group cursor-pointer">
+                                            <div className="h-10 w-10 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-400 font-bold mr-3">
+                                                {coAuthor.trim().charAt(0)}
+                                            </div>
+                                            <div>
+                                                <p className="text-sm font-medium text-text-light dark:text-white group-hover:text-primary transition-colors">{coAuthor.trim()}</p>
+                                                <p className="text-xs text-text-muted-light dark:text-text-muted-dark">Co-Author</p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </section>
 
-                            {/* Author */}
-                            <div className="bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-lg shadow-sm p-4">
-                                <Link to="/profile/Sarah%20Jenkins" className="flex items-center gap-3 group">
-                                    <div className="h-10 w-10 rounded-full bg-blue-500 flex items-center justify-center text-white text-sm font-bold ring-2 ring-transparent group-hover:ring-primary transition-all">
-                                        SJ
+                            {/* Info Card */}
+                            <section className="bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-lg shadow-sm p-6">
+                                <h3 className="text-sm font-semibold text-text-muted-light dark:text-text-muted-dark uppercase tracking-wider mb-4">Project Details</h3>
+                                <dl className="space-y-3">
+                                    <div className="flex justify-between">
+                                        <dt className="text-sm text-text-muted-light dark:text-text-muted-dark">Published</dt>
+                                        <dd className="text-sm font-medium text-text-light dark:text-white">{project.createdAt ? new Date(project.createdAt.seconds * 1000).toLocaleDateString() : 'N/A'}</dd>
                                     </div>
-                                    <div>
-                                        <h3 className="text-sm font-semibold text-text-light dark:text-white group-hover:text-primary transition-colors">Author</h3>
-                                        <p className="text-xs text-text-muted-light dark:text-text-muted-dark">Sarah Jenkins</p>
+                                    <div className="flex justify-between">
+                                        <dt className="text-sm text-text-muted-light dark:text-text-muted-dark">Language</dt>
+                                        <dd className="text-sm font-medium text-text-light dark:text-white">English</dd>
                                     </div>
-                                    <span className="ml-auto material-symbols-outlined text-text-muted-light dark:text-text-muted-dark group-hover:text-primary text-sm">open_in_new</span>
-                                </Link>
-                            </div>
-                        </aside>
+                                    <div className="flex justify-between">
+                                        <dt className="text-sm text-text-muted-light dark:text-text-muted-dark">License</dt>
+                                        <dd className="text-sm font-medium text-text-light dark:text-white">Academic Use</dd>
+                                    </div>
+                                </dl>
+                            </section>
+                        </div>
                     </div>
                 </div>
             </main>

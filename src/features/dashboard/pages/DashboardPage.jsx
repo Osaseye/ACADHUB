@@ -1,9 +1,45 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Sidebar } from '../../../components/layout/Sidebar';
 import { useSidebar } from '../../../hooks/useSidebar';
+import { useAuth } from '../../../context/AuthContext';
+import { db } from '../../../config/firebase';
+import { collection, query, where, getCountFromServer } from 'firebase/firestore';
 
 export const DashboardPage = () => {
     const { isSidebarCollapsed, toggleSidebar } = useSidebar();
+    const { currentUser } = useAuth();
+    const [stats, setStats] = useState({ uploads: 0, saved: 0 });
+
+    useEffect(() => {
+        const fetchStats = async () => {
+            if (!currentUser) return;
+
+            try {
+                // Count Projects
+                const projectsQuery = query(
+                    collection(db, "projects"), 
+                    where("studentId", "==", currentUser.uid)
+                );
+                const projectsSnapshot = await getCountFromServer(projectsQuery);
+
+                // Count Saved Items
+                const savedQuery = query(
+                    collection(db, "saved_items"), 
+                    where("userId", "==", currentUser.uid)
+                );
+                const savedSnapshot = await getCountFromServer(savedQuery);
+
+                setStats({
+                    uploads: projectsSnapshot.data().count,
+                    saved: savedSnapshot.data().count
+                });
+            } catch (error) {
+                console.error("Error fetching stats:", error);
+            }
+        };
+
+        fetchStats();
+    }, [currentUser]);
 
     return (
         <div className="flex h-screen overflow-hidden bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark font-sans transition-colors duration-200">
@@ -23,8 +59,8 @@ export const DashboardPage = () => {
                         {/* Abstract Pattern Overlay */}
                         <div className="absolute right-0 top-0 h-full w-64 opacity-10 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgZmlsbC1ydWxlPSJldmVub2RkIiBjbGlwLXJ1bGU9ImV2ZW5vZGQiPjxwYXRoIGQ9Ik0xMiAyTDIsN2wxMCw1IDEwLTV6Ii8+PHBhdGggZD0iTTIgMTdsMTAgNSAxMC01TTIgMTJsMTAgNSAxMC01Ii8+PC9zdmc+')] bg-repeat space-x-2"></div>
                         <div className="relative z-10">
-                            <h1 className="text-2xl font-bold mb-1">Welcome back, John</h1>
-                            <p className="text-blue-100 text-sm">MSc Computer Science • Department of Engineering</p>
+                            <h1 className="text-2xl font-bold mb-1">Welcome back, {currentUser?.displayName || "Scholar"}</h1>
+                            <p className="text-blue-100 text-sm">Your Dashboard Overview</p>
                         </div>
                     </div>
 
@@ -35,7 +71,7 @@ export const DashboardPage = () => {
                             <div className="flex items-center justify-between">
                                 <div>
                                     <p className="text-sm font-medium text-text-muted-light dark:text-text-muted-dark">Total Uploads</p>
-                                    <p className="text-2xl font-bold text-text-light dark:text-white mt-1">12</p>
+                                    <p className="text-2xl font-bold text-text-light dark:text-white mt-1">{stats.uploads}</p>
                                 </div>
                                 <div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-md group-hover:bg-blue-100 dark:group-hover:bg-blue-900/50 transition-colors">
                                     <span className="material-symbols-outlined text-primary text-[24px]">article</span>
@@ -43,7 +79,7 @@ export const DashboardPage = () => {
                             </div>
                             <div className="mt-4 flex items-center text-xs text-green-600 dark:text-green-400">
                                 <span className="material-symbols-outlined text-sm mr-1">arrow_upward</span>
-                                <span>2 new this month</span>
+                                <span>0 new this month</span>
                             </div>
                         </div>
 
@@ -52,19 +88,19 @@ export const DashboardPage = () => {
                             <div className="flex items-center justify-between">
                                 <div>
                                     <p className="text-sm font-medium text-text-muted-light dark:text-text-muted-dark">Topic Interaction</p>
-                                    <p className="text-2xl font-bold text-text-light dark:text-white mt-1">High</p>
+                                    <p className="text-2xl font-bold text-text-light dark:text-white mt-1">-</p>
                                 </div>
                                 <div className="p-2 bg-green-50 dark:bg-green-900/30 rounded-md group-hover:bg-green-100 dark:group-hover:bg-green-900/50 transition-colors">
                                     <span className="material-symbols-outlined text-green-600 dark:text-green-400 text-[24px]">insights</span>
                                 </div>
                             </div>
                             <div className="mt-4 h-6 w-full flex items-end gap-1">
-                                <div className="w-1/6 bg-blue-100 dark:bg-blue-900 h-2 rounded-t"></div>
-                                <div className="w-1/6 bg-blue-200 dark:bg-blue-800 h-3 rounded-t"></div>
-                                <div className="w-1/6 bg-blue-300 dark:bg-blue-700 h-2 rounded-t"></div>
-                                <div className="w-1/6 bg-blue-400 dark:bg-blue-600 h-4 rounded-t"></div>
-                                <div className="w-1/6 bg-blue-500 dark:bg-blue-500 h-5 rounded-t"></div>
-                                <div className="w-1/6 bg-primary h-6 rounded-t"></div>
+                                <div className="w-1/6 bg-blue-100 dark:bg-blue-900 h-1 rounded-t"></div>
+                                <div className="w-1/6 bg-blue-200 dark:bg-blue-800 h-1 rounded-t"></div>
+                                <div className="w-1/6 bg-blue-300 dark:bg-blue-700 h-1 rounded-t"></div>
+                                <div className="w-1/6 bg-blue-400 dark:bg-blue-600 h-1 rounded-t"></div>
+                                <div className="w-1/6 bg-blue-500 dark:bg-blue-500 h-1 rounded-t"></div>
+                                <div className="w-1/6 bg-primary h-1 rounded-t"></div>
                             </div>
                         </div>
 
@@ -73,14 +109,14 @@ export const DashboardPage = () => {
                             <div className="flex items-center justify-between">
                                 <div>
                                     <p className="text-sm font-medium text-text-muted-light dark:text-text-muted-dark">Saved Research</p>
-                                    <p className="text-2xl font-bold text-text-light dark:text-white mt-1">48</p>
+                                    <p className="text-2xl font-bold text-text-light dark:text-white mt-1">{stats.saved}</p>
                                 </div>
                                 <div className="p-2 bg-yellow-50 dark:bg-yellow-900/30 rounded-md group-hover:bg-yellow-100 dark:group-hover:bg-yellow-900/50 transition-colors">
                                     <span className="material-symbols-outlined text-yellow-600 dark:text-yellow-500 text-[24px]">star_border</span>
                                 </div>
                             </div>
                             <div className="mt-4 flex items-center text-xs text-text-muted-light dark:text-text-muted-dark">
-                                <span>Last saved: "Neural Networks..."</span>
+                                <span>No saved items</span>
                             </div>
                         </div>
                     </div>
@@ -104,12 +140,8 @@ export const DashboardPage = () => {
                                 </div>
 
                                 {/* List Items */}
-                                {[
-                                    { title: "Deep Learning Architectures for Genomics", degree: "PhD", dept: "Bioinformatics", author: "Alice Chen", initial: "A", year: "2023", color: "purple" },
-                                    { title: "Optimizing Database Queries with AI", degree: "MSc", dept: "Database Systems", author: "Mark Wilson", initial: "M", year: "2023", color: "blue", saved: true },
-                                    { title: "Sustainable Energy Grid Analysis", degree: "BSc", dept: "Electrical Eng", author: "Sarah Jenkins", initial: "S", year: "2022", color: "green" },
-                                    { title: "Natural Language Processing in Law", degree: "MSc", dept: "AI & Law", author: "Raj Patel", initial: "R", year: "2023", color: "blue" }
-                                ].map((item, idx) => (
+                                {([]).length > 0 ? (
+                                    [].map((item, idx) => (
                                     <div key={idx} className="group px-4 py-3 grid grid-cols-12 gap-4 items-center border-b border-border-light dark:border-border-dark last:border-0 hover:bg-surface-light dark:hover:bg-gray-800 transition-colors cursor-pointer">
                                         <div className="col-span-6">
                                             <div className="flex items-start gap-3">
@@ -138,7 +170,13 @@ export const DashboardPage = () => {
                                             </button>
                                         </div>
                                     </div>
-                                ))}
+                                    ))
+                                ) : (
+                                    <div className="p-8 text-center text-text-muted-light dark:text-text-muted-dark">
+                                        <span className="material-symbols-outlined text-[48px] mb-2 text-gray-300 dark:text-gray-600">article</span>
+                                        <p>No recent research found</p>
+                                    </div>
+                                )}
                             </div>
                         </div>
 
@@ -148,17 +186,14 @@ export const DashboardPage = () => {
                             <div className="bg-white dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-lg p-5 shadow-sm">
                                 <div className="flex items-center gap-2 mb-4">
                                     <span className="material-symbols-outlined text-secondary text-[20px]">auto_awesome</span>
-                                    <h3 className="font-semibold text-text-light dark:text-white">AI Research Insights</h3>
+                                    <h3 className="font-semibold text-text-light dark:text-white">Research Insights</h3>
                                 </div>
                                 <div className="text-sm text-text-muted-light dark:text-text-muted-dark space-y-3">
                                     <p className="leading-relaxed">
-                                        Based on recent uploads in <span className="font-medium text-text-light dark:text-white">Computer Science</span>, there is a <span className="text-green-600 dark:text-green-400 font-medium">15% increase</span> in projects utilizing Transformer architectures.
+                                        No sufficient data to generate insights yet.
                                     </p>
-                                    <div className="p-3 bg-surface-light dark:bg-gray-800 rounded border border-border-light dark:border-border-dark text-xs">
-                                        <strong>Tip:</strong> Consider exploring "Attention Mechanisms" for your next thesis topic to align with current department trends.
-                                    </div>
                                 </div>
-                                <button className="w-full mt-4 py-2 px-4 bg-white dark:bg-gray-800 border border-border-light dark:border-border-dark rounded text-sm font-medium text-text-light dark:text-white hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                                <button className="w-full mt-4 py-2 px-4 bg-white dark:bg-gray-800 border border-border-light dark:border-border-dark rounded text-sm font-medium text-text-light dark:text-white hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors" disabled>
                                     Generate New Report
                                 </button>
                             </div>
@@ -167,28 +202,8 @@ export const DashboardPage = () => {
                             <div className="bg-white dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-lg p-5 shadow-sm">
                                 <h3 className="font-semibold text-text-light dark:text-white mb-4">Trending Tags</h3>
                                 <div className="flex flex-wrap gap-2">
-                                    {[
-                                        { label: "Machine Learning", trending: true },
-                                        { label: "Blockchain", trending: false },
-                                        { label: "Climate Change", trending: false },
-                                        { label: "Data Science", trending: true },
-                                        { label: "Cybersecurity", trending: false },
-                                        { label: "Quantum Computing", trending: false },
-                                        { label: "Genomics", trending: false },
-                                    ].map((tag, idx) => (
-                                        <button 
-                                            key={idx}
-                                            className={`
-                                                px-2.5 py-1 rounded-full text-xs font-medium transition-colors border
-                                                ${tag.trending 
-                                                    ? "bg-blue-50 text-primary hover:bg-blue-100 dark:bg-blue-900/40 dark:text-blue-200 dark:hover:bg-blue-900/60 border-blue-100 dark:border-blue-800" 
-                                                    : "bg-surface-light text-text-muted-light hover:bg-gray-200 dark:bg-gray-800 dark:text-text-muted-dark dark:hover:bg-gray-700 border-border-light dark:border-border-dark"
-                                                }
-                                            `}
-                                        >
-                                            {tag.label}
-                                        </button>
-                                    ))}
+                                    {/* Empty State */}
+                                    <p className="text-sm text-text-muted-light dark:text-text-muted-dark">No trending tags available.</p>
                                 </div>
                             </div>
                         </div>

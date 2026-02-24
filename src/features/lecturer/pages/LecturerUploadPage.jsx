@@ -1,15 +1,20 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Sidebar } from '../../../components/layout/Sidebar';
 import { useSidebar } from '../../../hooks/useSidebar';
+import { useAuth } from '../../../context/AuthContext';
+import { db, storage } from '../../../config/firebase';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 export const LecturerUploadPage = () => {
     const navigate = useNavigate();
     const { isSidebarCollapsed, toggleSidebar } = useSidebar();
+    const { currentUser } = useAuth();
     
-    // Steps: 'input' -> 'analyzing' -> 'review'
-    const [currentStep, setCurrentStep] = useState('input');
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [projectFile, setProjectFile] = useState(null);
 
     const [formData, setFormData] = useState({
         title: '',
@@ -25,23 +30,65 @@ export const LecturerUploadPage = () => {
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
-    const handleAnalyze = (e) => {
+    const handleFileChange = (e) => {
+        if (e.target.files[0]) {
+            setProjectFile(e.target.files[0]);
+        }
+    };
+
+    const handleSubmit = async (e) => {
         e.preventDefault();
-        setCurrentStep('analyzing');
         
-        // Simulate AI Processing
-        setTimeout(() => {
-            setCurrentStep('review');
-        }, 2500);
-    };
+        if (!projectFile) {
+            toast.error("Please upload the research document (PDF).");
+            return;
+        }
 
-    const handlePublish = () => {
-        toast.success("Work published successfully!");
-        navigate('/lecturer/publications');
-    };
+        setIsSubmitting(true);
 
-    const handleBackToEdit = () => {
-        setCurrentStep('input');
+        try {
+            // 1. Upload File
+            const storageRef = ref(storage, `project_files/${currentUser.uid}/${Date.now()}_${projectFile.name}`);
+            const snapshot = await uploadBytes(storageRef, projectFile);
+            const downloadUrl = await getDownloadURL(snapshot.ref);
+
+            // 2. Create Project Document
+            await addDoc(collection(db, "projects"), {
+                title: formData.title,
+                abstract: formData.abstract,
+                type: formData.type,
+                venue: formData.venue,
+                publicationDate: formData.date,
+                keywords: formData.keywords.split(',').map(k => k.trim()),
+                fileUrl: downloadUrl,
+                fileName: projectFile.name,
+                fileSize: (projectFile.size / 1024 / 1024).toFixed(2) + " MB",
+                
+                // Author Metadata
+                authorId: currentUser.uid,
+                authorName: currentUser.displayName || "Unknown Lecturer",
+                department: currentUser.department || "General",
+                university: currentUser.institution || "Unknown University",
+                uploadedBy: currentUser.uid,
+                role: 'lecturer',
+                
+                // System Metadata
+                likes: 0,
+                views: 0,
+                citations: 0,
+                status: 'published',
+                createdAt: serverTimestamp()
+            });
+
+            toast.success("Research published successfully!");
+            navigate('/lecturer/publications');
+
+        } catch (error) {
+            console.error("Upload Error:", error);
+            toast.error("Failed to publish research.");
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     return (
@@ -60,171 +107,138 @@ export const LecturerUploadPage = () => {
                         <p className="text-sm text-gray-500 dark:text-gray-400">Direct publication portal for faculty members.</p>
                     </div>
 
-                    {/* Content Based on Step */}
-                    {currentStep === 'input' && (
-                         <div className="bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-xl shadow-sm p-8 animate-fade-in">
-                            <form onSubmit={handleAnalyze} className="space-y-6">
+                    <div className="bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-xl shadow-sm p-8 animate-fade-in">
+                        <form onSubmit={handleSubmit} className="space-y-6">
+                            
+                            {/* File Upload Section */}
+                            <div className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${!projectFile ? 'border-gray-300 dark:border-gray-600 hover:border-primary bg-gray-50 dark:bg-gray-800/50' : 'border-green-500 bg-green-50 dark:bg-green-900/20'}`}>
+                                <div className="space-y-2">
+                                    <div className="mx-auto h-12 w-12 text-gray-400">
+                                        <span className="material-symbols-outlined text-5xl">cloud_upload</span>
+                                    </div>
+                                    <div className="flex text-sm text-gray-600 dark:text-gray-400 justify-center">
+                                        <label htmlFor="file-upload" className="relative cursor-pointer rounded-md font-medium text-primary hover:text-primary-hover focus-within:outline-none">
+                                            <span>Upload a PDF</span>
+                                            <input id="file-upload" name="file-upload" type="file" className="sr-only" accept=".pdf" onChange={handleFileChange} />
+                                        </label>
+                                        <p className="pl-1">or drag and drop</p>
+                                    </div>
+                                    <p className="text-xs text-gray-500">PDF up to 50MB</p>
+                                </div>
+                                {projectFile && (
+                                    <div className="mt-4 flex items-center justify-center gap-2 text-sm text-green-600 font-medium">
+                                        <span className="material-symbols-outlined text-lg">description</span>
+                                        {projectFile.name}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Research Title</label>
+                                <input 
+                                    required
+                                    name="title"
+                                    value={formData.title}
+                                    onChange={handleChange}
+                                    type="text" 
+                                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary bg-white dark:bg-gray-700 dark:text-white"
+                                    placeholder="Enter the full title of the work..."
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Research Title</label>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Publication Type</label>
+                                    <select 
+                                        name="type"
+                                        value={formData.type}
+                                        onChange={handleChange}
+                                        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary bg-white dark:bg-gray-700 dark:text-white"
+                                    >
+                                        <option>Journal Article</option>
+                                        <option>Conference Paper</option>
+                                        <option>Book Chapter</option>
+                                        <option>Technical Report</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Publication Venue</label>
                                     <input 
-                                        required
-                                        name="title"
-                                        value={formData.title}
+                                        name="venue"
+                                        value={formData.venue}
                                         onChange={handleChange}
                                         type="text" 
                                         className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary bg-white dark:bg-gray-700 dark:text-white"
-                                        placeholder="Enter the full title of the work..."
+                                        placeholder="e.g. IEEE Access, Nature"
                                     />
                                 </div>
-
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Publication Type</label>
-                                        <select 
-                                            name="type"
-                                            value={formData.type}
-                                            onChange={handleChange}
-                                            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary bg-white dark:bg-gray-700 dark:text-white"
-                                        >
-                                            <option>Journal Article</option>
-                                            <option>Conference Paper</option>
-                                            <option>Book Chapter</option>
-                                            <option>Technical Report</option>
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Publication Date</label>
-                                        <input 
-                                            name="date"
-                                            value={formData.date}
-                                            onChange={handleChange}
-                                            type="date" 
-                                            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary bg-white dark:bg-gray-700 dark:text-white"
-                                        />
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Abstract</label>
-                                    <textarea 
-                                        required
-                                        name="abstract"
-                                        value={formData.abstract}
-                                        onChange={handleChange}
-                                        rows="6"
-                                        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary bg-white dark:bg-gray-700 dark:text-white resize-none"
-                                        placeholder="Paste the abstract here..."
-                                    ></textarea>
-                                </div>
-                                
-                                <div className="p-6 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-800/50 flex flex-col items-center justify-center text-center">
-                                    <span className="material-symbols-outlined text-4xl text-gray-400 mb-2">cloud_upload</span>
-                                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Upload Manuscript (PDF)</p>
-                                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Max file size: 10MB</p>
-                                    <button type="button" className="mt-4 px-4 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors">
-                                        Select File
-                                    </button>
-                                </div>
-
-                                <div className="flex justify-end pt-4">
-                                    <button 
-                                        type="submit" 
-                                        className="bg-primary hover:bg-sky-700 text-white px-8 py-3 rounded-lg shadow-sm text-sm font-bold transition-all flex items-center gap-2"
-                                    >
-                                        <span className="material-symbols-outlined">auto_awesome</span>
-                                        Analyze & Review
-                                    </button>
-                                </div>
-                            </form>
-                        </div>
-                    )}
-
-                    {currentStep === 'analyzing' && (
-                        <div className="flex-grow flex flex-col items-center justify-center p-12 text-center">
-                            <div className="mb-8 relative">
-                                <div className="w-24 h-24 rounded-full border-4 border-gray-100 border-t-primary animate-spin"></div>
-                                <span className="material-symbols-outlined absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-3xl text-primary">psychology</span>
-                            </div>
-                            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Analyzing Contribution...</h2>
-                            <p className="text-gray-500 dark:text-gray-400 max-w-md">
-                                Our AI is extracting metadata, checking trend alignment, and generating potential impact scores based on your abstract.
-                            </p>
-                        </div>
-                    )}
-
-                    {currentStep === 'review' && (
-                        <div className="space-y-6 animate-fade-in pb-12">
-                             <div className="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800 rounded-xl p-6">
-                                <div className="flex items-center gap-3 mb-4">
-                                    <span className="p-2 bg-white dark:bg-indigo-900 rounded-lg shadow-sm">
-                                        <span className="material-symbols-outlined text-indigo-600 text-2xl">auto_awesome</span>
-                                    </span>
-                                    <h2 className="text-lg font-bold text-indigo-900 dark:text-indigo-100">AI Publishing Insights</h2>
-                                </div>
-                                
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                    <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-indigo-50 dark:border-indigo-900/50">
-                                        <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Trend Alignment</span>
-                                        <div className="flex items-end gap-2 mt-2">
-                                            <span className="text-3xl font-bold text-gray-900 dark:text-white">94%</span>
-                                            <span className="text-sm font-medium text-green-600 mb-1">Very High</span>
-                                        </div>
-                                        <p className="text-xs text-gray-500 mt-2">Matches current "Green AI" department focus.</p>
-                                    </div>
-                                    <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-indigo-50 dark:border-indigo-900/50">
-                                        <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Suggested Tags</span>
-                                        <div className="flex flex-wrap gap-2 mt-3">
-                                            <span className="px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded-md">Neural Networks</span>
-                                            <span className="px-2 py-1 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 text-xs rounded-md border border-indigo-200 dark:border-indigo-800">Low-Power IoT</span>
-                                            <span className="px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded-md">Edge Computing</span>
-                                        </div>
-                                    </div>
-                                    <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-indigo-50 dark:border-indigo-900/50">
-                                        <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Readability Score</span>
-                                        <div className="flex items-end gap-2 mt-2">
-                                            <span className="text-3xl font-bold text-gray-900 dark:text-white">A+</span>
-                                            <span className="text-sm font-medium text-gray-400 mb-1">Academic Standard</span>
-                                        </div>
-                                        <p className="text-xs text-gray-500 mt-2">Abstract is concise and well-structured.</p>
-                                    </div>
-                                </div>
                             </div>
 
-                            <div className="bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-xl shadow-sm p-6">
-                                <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Confirm Details</h3>
-                                <div className="space-y-4 text-sm">
-                                    <div className="grid grid-cols-4 gap-4">
-                                        <span className="text-gray-500 dark:text-gray-400">Title:</span>
-                                        <span className="col-span-3 font-medium text-gray-900 dark:text-white">{formData.title}</span>
-                                    </div>
-                                    <div className="grid grid-cols-4 gap-4">
-                                        <span className="text-gray-500 dark:text-gray-400">Type:</span>
-                                        <span className="col-span-3 font-medium text-gray-900 dark:text-white">{formData.type}</span>
-                                    </div>
-                                     <div className="grid grid-cols-4 gap-4">
-                                        <span className="text-gray-500 dark:text-gray-400">Abstract:</span>
-                                        <span className="col-span-3 text-gray-700 dark:text-gray-300 italic">"{formData.abstract}"</span>
-                                    </div>
-                                </div>
-                                
-                                <div className="mt-8 flex items-center justify-end gap-4 border-t border-gray-100 dark:border-gray-800 pt-6">
-                                    <button 
-                                        onClick={handleBackToEdit}
-                                        className="px-6 py-2.5 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg font-medium transition-colors"
-                                    >
-                                        Edit Details
-                                    </button>
-                                    <button 
-                                        onClick={handlePublish}
-                                        className="px-8 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg shadow-md font-bold transition-all flex items-center gap-2"
-                                    >
-                                        <span className="material-symbols-outlined">send</span>
-                                        Publish Now
-                                    </button>
-                                </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Date</label>
+                                <input 
+                                    name="date"
+                                    value={formData.date}
+                                    onChange={handleChange}
+                                    type="date"
+                                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary bg-white dark:bg-gray-700 dark:text-white"
+                                />
                             </div>
-                        </div>
-                    )}
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Abstract</label>
+                                <textarea 
+                                    required
+                                    name="abstract"
+                                    value={formData.abstract}
+                                    onChange={handleChange}
+                                    rows={5}
+                                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary bg-white dark:bg-gray-700 dark:text-white"
+                                    placeholder="Provide a concise summary of the research..."
+                                />
+                            </div>
+                            
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Keywords</label>
+                                <input 
+                                    name="keywords"
+                                    value={formData.keywords}
+                                    onChange={handleChange}
+                                    type="text"
+                                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary bg-white dark:bg-gray-700 dark:text-white"
+                                    placeholder="Comma separated (e.g. AI, Machine Learning, Data Science)"
+                                />
+                            </div>
+
+                            <div className="pt-4 flex items-center justify-end gap-3">
+                                <button 
+                                    type="button"
+                                    onClick={() => navigate(-1)}
+                                    className="px-6 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button 
+                                    type="submit"
+                                    disabled={isSubmitting}
+                                    className="px-6 py-2 bg-primary hover:bg-primary-hover text-white rounded-lg shadow-lg shadow-primary/30 transition-all flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                                >
+                                    {isSubmitting ? (
+                                        <>
+                                            <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                                            Publishing...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <span className="material-symbols-outlined text-sm">rocket_launch</span>
+                                            Publish Work
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+
+                        </form>
+                    </div>
                 </div>
             </main>
         </div>

@@ -3,6 +3,8 @@ import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { Toaster } from "sonner";
 import ScrollToTop from "./components/common/ScrollToTop";
 import { PageLoader } from "./components/common/PageLoader";
+import { AuthProvider } from "./context/AuthContext";
+import { NotificationProvider } from "./context/NotificationContext";
 
 // Static Imports (Critical Path)
 import LandingPage from "./features/landing/LandingPage";
@@ -34,6 +36,7 @@ const LecturerPublicationsPage = lazy(() => import("./features/lecturer/pages/Le
 const LecturerAnalyticsPage = lazy(() => import("./features/lecturer/pages/LecturerAnalyticsPage").then(module => ({ default: module.LecturerAnalyticsPage })));
 const LecturerRepositoryPage = lazy(() => import("./features/lecturer/pages/LecturerRepositoryPage").then(module => ({ default: module.LecturerRepositoryPage })));
 const LecturerRepositoryDetailPage = lazy(() => import("./features/lecturer/pages/LecturerRepositoryDetailPage").then(module => ({ default: module.LecturerRepositoryDetailPage })));
+const LecturerProjectReviewPage = lazy(() => import("./features/lecturer/pages/LecturerProjectReviewPage").then(module => ({ default: module.LecturerProjectReviewPage })));
 const LecturerNotificationsPage = lazy(() => import("./features/lecturer/pages/LecturerNotificationsPage").then(module => ({ default: module.LecturerNotificationsPage })));
 const LecturerSettingsPage = lazy(() => import("./features/lecturer/pages/LecturerSettingsPage").then(module => ({ default: module.LecturerSettingsPage })));
 const LecturerUploadPage = lazy(() => import("./features/lecturer/pages/LecturerUploadPage").then(module => ({ default: module.LecturerUploadPage })));
@@ -49,9 +52,11 @@ const AdminSettingsPage = lazy(() => import("./features/admin/pages/AdminSetting
 function App() {
   return (
     <Router>
-      <Toaster position="top-right" richColors />
-      <ScrollToTop />
-      <Suspense fallback={<PageLoader />}>
+      <AuthProvider>
+        <NotificationProvider>
+        <Toaster position="top-right" richColors />
+        <ScrollToTop />
+        <Suspense fallback={<PageLoader />}>
         <Routes>
             <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
@@ -79,6 +84,7 @@ function App() {
         <Route path="/lecturer/analytics" element={<LecturerAnalyticsPage />} />
         <Route path="/lecturer/repository" element={<LecturerRepositoryPage />} />
         <Route path="/lecturer/repository/:id" element={<LecturerRepositoryDetailPage />} />
+        <Route path="/lecturer/review/:projectId" element={<LecturerProjectReviewPage />} />
         <Route path="/lecturer/notifications" element={<LecturerNotificationsPage />} />
         <Route path="/lecturer/settings" element={<LecturerSettingsPage />} />
 
@@ -87,16 +93,20 @@ function App() {
         {/* Shared Routes */}
         <Route path="/repository" element={<RepositoryPage />} />
         <Route path="/repository/:id" element={<RepositoryDetailPage />} />
+        <Route path="/profile" element={<UserProfilePage />} />
         <Route path="/profile/:userId" element={<UserProfilePage />} />
         <Route path="/uploads" element={<MyUploadsPage />} />
         <Route path="/uploads/new" element={<UploadProjectPage />} />
+        <Route path="/uploads/edit/:id" element={<UploadProjectPage />} /> 
         <Route path="/analytics" element={<TrendsPage />} />
         <Route path="/saved" element={<SavedPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         </Routes>
       </Suspense>
-    </Router>
+    </NotificationProvider>
+  </AuthProvider>
+</Router>
   );
 }
 

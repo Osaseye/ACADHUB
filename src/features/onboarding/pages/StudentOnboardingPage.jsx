@@ -1,6 +1,12 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { toast } from "sonner";
+import { useAuth } from "../../../context/AuthContext";
+import { db, storage } from "../../../config/firebase";
+import { doc, updateDoc } from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { PageLoader } from "../../../components/common/PageLoader";
+import { NIGERIAN_UNIVERSITIES } from "../../../data/universities";
 
 // Steps
 const STEP_PROFILE = 1;
@@ -8,9 +14,12 @@ const STEP_INTERESTS = 2;
 const STEP_INTENT = 3;
 
 export const StudentOnboardingPage = () => {
+  const { currentUser } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [currentStep, setCurrentStep] = useState(STEP_PROFILE);
+  const [profilePhoto, setProfilePhoto] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     degree: "",
     institution: "",
@@ -26,25 +35,34 @@ export const StudentOnboardingPage = () => {
         const email = location.state.email;
         const domain = email.split("@")[1];
         if (domain) {
-            // Heuristics for Nigerian Schools
-            let institutionName = "";
-            if (domain.includes("babcock")) institutionName = "Babcock University";
-            else if (domain.includes("covenant")) institutionName = "Covenant University";
-            else if (domain.includes("unilag.edu.ng")) institutionName = "University of Lagos";
-            else if (domain.includes("ui.edu.ng")) institutionName = "University of Ibadan";
-            else if (domain.includes("unn.edu.ng")) institutionName = "University of Nigeria, Nsukka";
-            else if (domain.includes("abu.edu.ng")) institutionName = "Ahmadu Bello University";
-            else if (domain.includes("oau.edu.ng")) institutionName = "Obafemi Awolowo University";
-            else if (domain.includes("lasu.edu.ng")) institutionName = "Lagos State University";
-            else if (domain.includes("futa.edu.ng")) institutionName = "Federal University of Technology, Akure";
-            else if (domain.includes("futminna.edu.ng")) institutionName = "Federal University of Technology, Minna";
-            else if (domain.includes("unilorin.edu.ng")) institutionName = "University of Ilorin";
-            else if (domain.includes("uniben.edu")) institutionName = "University of Benin";
+            // Heuristics for Nigerian Schools mapped to our list
+            const searchTerms = [
+                { key: "babcock", term: "Babcock University" },
+                { key: "covenant", term: "Covenant University" },
+                { key: "unilag", term: "University of Lagos" },
+                { key: "ui.edu.ng", term: "University of Ibadan" },
+                { key: "unn.edu.ng", term: "University of Nigeria" }, // Covers Nsukka
+                { key: "abu.edu.ng", term: "Ahmadu Bello University" },
+                { key: "oau.edu.ng", term: "Obafemi Awolowo University" },
+                { key: "lasu.edu.ng", term: "Lagos State University" },
+                { key: "futa.edu.ng", term: "Federal University of Technology, Akure" },
+                { key: "futminna.edu.ng", term: "Federal University of Technology, Minna" },
+                { key: "unilorin.edu.ng", term: "University of Ilorin" },
+                { key: "uniben.edu", term: "University of Benin" }
+            ];
+
+            let matchedUni = "";
+            for (const item of searchTerms) {
+                if (domain.includes(item.key)) {
+                    matchedUni = NIGERIAN_UNIVERSITIES.find(u => u.includes(item.term));
+                    break;
+                }
+            }
             
             // If recognized, set it
-            if (institutionName) {
-                setFormData(prev => ({ ...prev, institution: institutionName }));
-                toast.info(`We've detected your institution: ${institutionName}`);
+            if (matchedUni) {
+                setFormData(prev => ({ ...prev, institution: matchedUni }));
+                toast.info(`We've detected your institution: ${matchedUni}`);
             }
         }
     }
@@ -73,8 +91,14 @@ export const StudentOnboardingPage = () => {
      });
   };
 
+  const handleFileChange = (e) => {
+    if (e.target.files[0]) {
+      setProfilePhoto(e.target.files[0]);
+    }
+  };
+
   // Validations & Navigation
-  const handleNext = () => {
+  const handleNext = async () => {
     if (currentStep === STEP_PROFILE) {
         if (!formData.degree || !formData.institution || !formData.department || !formData.gradYear) {
             toast.error("Please fill in all fields to continue.");
@@ -92,10 +116,50 @@ export const StudentOnboardingPage = () => {
             toast.error("Please select at least one way you plan to use AcadHub.");
             return;
         }
-        // Complete
-        toast.success("Welcome to AcadHub! Your profile is ready.");
-        // Redirect to dashboard (placeholder)
-        setTimeout(() => navigate("/dashboard"), 1500); 
+        
+        setIsSubmitting(true);
+        try {
+            if (!currentUser) throw new Error("No user logged in.");
+
+            let photoURL = currentUser.photoURL;
+
+            // 1. Upload Photo if selected
+            if (profilePhoto) {
+                const storageRef = ref(storage, `profile_pictures/${currentUser.uid}`);
+                const snapshot = await uploadBytes(storageRef, profilePhoto);
+                // Get download URL from the snapshot's reference
+                photoURL = await getDownloadURL(snapshot.ref);
+            }
+
+            // 2. Update Firestore
+            // Ensure we are using 'setDoc' with merge:true or updateDoc if document exists
+            // Since register creates the document, updateDoc is safe.
+            const userRef = doc(db, "users", currentUser.uid);
+            
+            // Clean undefined values if any
+            const dataToUpdate = {
+                degree: formData.degree,
+                institution: formData.institution,
+                department: formData.department,
+                gradYear: formData.gradYear,
+                interests: formData.interests,
+                intents: formData.intents,
+                photoURL: photoURL || null,
+                onboardingCompleted: true,
+                updatedAt: new Date()
+            };
+
+            await updateDoc(userRef, dataToUpdate);
+
+            toast.success("Profile Setup Complete!");
+            // Short delay for toast visibility before redirect
+            setTimeout(() => navigate("/dashboard", { replace: true }), 1000); 
+            
+        } catch (error) {
+            console.error("Onboarding Error:", error);
+            toast.error(`Failed to save profile: ${error.message}`);
+            setIsSubmitting(false); // Only stop loading on error, success redirects/unmounts
+        }
     }
   };
 
@@ -181,6 +245,26 @@ export const StudentOnboardingPage = () => {
                     </div>
 
                     <div className="space-y-6">
+                        {/* Profile Picture Upload */}
+                         <div className="flex flex-col items-center mb-6">
+                            <div className="relative group cursor-pointer">
+                                <div className="w-24 h-24 rounded-full overflow-hidden bg-gray-100 dark:bg-gray-800 border-2 border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-center group-hover:border-primary transition-colors">
+                                    {profilePhoto ? (
+                                        <img src={URL.createObjectURL(profilePhoto)} alt="Preview" className="w-full h-full object-cover" />
+                                    ) : (
+                                        <span className="material-symbols-outlined text-gray-400 text-4xl">add_a_photo</span>
+                                    )}
+                                </div>
+                                <input 
+                                    type="file" 
+                                    accept="image/*"
+                                    onChange={handleFileChange}
+                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                />
+                                <span className="text-xs text-gray-500 mt-2 block text-center mt-26">Upload Photo</span>
+                            </div>
+                        </div>
+
                         <div className="space-y-2">
                              <label className="block text-sm font-medium text-text-light dark:text-white">Current Degree Level</label>
                              <select 
@@ -201,18 +285,23 @@ export const StudentOnboardingPage = () => {
                              <label className="block text-sm font-medium text-text-light dark:text-white">Institution / University</label>
                              <div className="relative group">
                                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 material-symbols-outlined text-[20px] group-focus-within:text-primary transition-colors">school</span>
-                                <input 
-                                    type="text" 
-                                    placeholder="e.g. Stanford University"
+                                <select 
                                     value={formData.institution}
                                     onChange={(e) => updateData("institution", e.target.value)}
-                                    className="w-full pl-11 pr-4 py-3 bg-white dark:bg-[#0d1117] border border-border-light dark:border-border-dark rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-text-light dark:text-white"
-                                />
-                                {formData.institution && (
-                                     <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded animate-in fade-in zoom-in">
-                                        Verified Domain
-                                     </div>
-                                )}
+                                    className="w-full pl-11 pr-4 py-3 bg-white dark:bg-[#0d1117] border border-border-light dark:border-border-dark rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-text-light dark:text-white appearance-none cursor-pointer hover:border-primary/50"
+                                >
+                                    <option value="" disabled>Select your institution...</option>
+                                    {NIGERIAN_UNIVERSITIES.map((uni) => (
+                                        <option key={uni} value={uni}>
+                                            {uni}
+                                        </option>
+                                    ))}
+                                </select>
+                                <span className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                                    <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                                        <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                                    </svg>
+                                </span>
                              </div>
                         </div>
 
@@ -367,13 +456,13 @@ export const StudentOnboardingPage = () => {
                 </div>
             )}
 
-
             {/* Footer Actions / Navigation */}
             <div className="px-8 py-6 bg-gray-50 dark:bg-[#0d1117]/30 border-t border-border-light dark:border-border-dark flex items-center justify-between">
                  {currentStep > 1 ? (
                     <button 
                         onClick={handleBack}
-                        className="text-sm font-medium text-gray-500 hover:text-text-light dark:hover:text-white transition-colors"
+                        disabled={isSubmitting}
+                        className="text-sm font-medium text-gray-500 hover:text-text-light dark:hover:text-white transition-colors disabled:opacity-50"
                     >
                         Back
                     </button>
@@ -383,10 +472,20 @@ export const StudentOnboardingPage = () => {
 
                  <button 
                     onClick={handleNext}
-                    className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white font-bold py-2.5 px-6 rounded-lg shadow-lg shadow-primary/20 transition-all transform hover:-translate-y-0.5"
+                    disabled={isSubmitting}
+                    className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white font-bold py-2.5 px-6 rounded-lg shadow-lg shadow-primary/20 transition-all transform hover:-translate-y-0.5 disabled:opacity-70 disabled:cursor-not-allowed"
                  >
-                    {currentStep === STEP_INTENT ? "Finish" : "Next Step"}
-                    <span className="material-symbols-outlined text-sm">arrow_forward</span>
+                    {isSubmitting ? (
+                        <span className="flex items-center gap-2">
+                             <span className="w-4 h-4 border-2 border-white/50 border-t-white rounded-full animate-spin"></span>
+                             Saving...
+                        </span>
+                    ) : (
+                        <>
+                            {currentStep === STEP_INTENT ? "Finish" : "Next Step"}
+                            <span className="material-symbols-outlined text-sm">arrow_forward</span>
+                        </>
+                    )}
                  </button>
             </div>
 

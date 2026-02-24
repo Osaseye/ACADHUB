@@ -1,73 +1,105 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Sidebar } from '../../../components/layout/Sidebar';
 import { useSidebar } from '../../../hooks/useSidebar';
 import { toast } from 'sonner';
 import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../../context/AuthContext';
+import { db } from '../../../config/firebase';
+import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
 
 export const SupervisionManagementPage = () => {
     const { isSidebarCollapsed, toggleSidebar } = useSidebar();
+    const { currentUser } = useAuth();
     const [activeTab, setActiveTab] = useState('requests'); // requests | active
     const navigate = useNavigate();
 
+    const [requests, setRequests] = useState([]);
+    const [projectReviews, setProjectReviews] = useState([]);
+    const [activeStudents, setActiveStudents] = useState([]);
+    const [loading, setLoading] = useState(true);
 
-    // Mock Data
-    const [requests, setRequests] = useState([
-        { 
-            id: 1, 
-            studentName: "Chinedu Okeke", 
-            matricNo: "19/XY/0445",
-            degree: "BSc",
-            department: "Computer Science",
-            topic: "AI in Traffic Control", 
-            abstract: "This project aims to leverage computer vision algorithms...",
-            date: "2026-02-09" 
-        },
-        { 
-            id: 2, 
-            studentName: "Ngozi Udeh", 
-            matricNo: "22/PG/MSC/012",
-            degree: "MSc",
-            department: "Computer Science",
-            topic: "Igbo NLP Corpus Construction", 
-            abstract: "We propose the creation of the largest annotated Igbo dataset...",
-            date: "2026-02-06" 
-        },
-        { 
-            id: 3, 
-            studentName: "Yakubu Musa", 
-            matricNo: "18/ENG/0221",
-            degree: "BSc",
-            department: "Electrical Engineering",
-            topic: "Smart Grid Analysis for Rural Areas", 
-            abstract: "Analyzing feasibility of solar-wind hybrid systems...",
-            date: "2026-02-01" 
+    useEffect(() => {
+        if (!currentUser) return;
+
+        // 1. Listen for Pending Supervision Requests
+        const qRequests = query(
+            collection(db, 'supervision_requests'),
+            where('lecturerId', '==', currentUser.uid),
+            where('status', '==', 'pending'),
+            orderBy('createdAt', 'desc')
+        );
+
+        const unsubscribeRequests = onSnapshot(qRequests, (snapshot) => {
+            const reqs = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data(),
+                date: doc.data().createdAt?.toDate().toLocaleDateString() || 'Recently'
+            }));
+            setRequests(reqs);
+            // Don't set loading false yet, wait for all
+        }, (error) => {
+            console.error("Error fetching requests:", error);
+        });
+
+        // 2. Listen for Pending Project Reviews
+        // Removed orderBy for now to debug if it's an index issue causing empty results
+        const qProjectReviews = query(
+            collection(db, 'projects'),
+            where('supervisorId', '==', currentUser.uid),
+            where('status', '==', 'Pending')
+        );
+
+        const unsubscribeReviews = onSnapshot(qProjectReviews, (snapshot) => {
+            const reviews = snapshot.docs.map(doc => {
+                const data = doc.data();
+                return {
+                    id: doc.id,
+                    ...data,
+                    // Handle timestamp properly, fallback to current date if missing
+                    date: data.createdAt?.toDate ? data.createdAt.toDate().toLocaleDateString() : 'Recently',
+                    title: data.title || 'Untitled Project',
+                    studentName: data.studentName || 'Unknown Student',
+                    isProjectReview: true
+                };
+            });
+            setProjectReviews(reviews);
+            setLoading(false);
+        }, (error) => {
+            console.error("Error fetching project reviews:", error);
+            setLoading(false);
+        });
+
+        // 3. Listen for Active Students (Approved Requests)
+        const qActive = query(
+            collection(db, 'supervision_requests'),
+            where('lecturerId', '==', currentUser.uid),
+            where('status', '==', 'approved')
+        );
+
+        const unsubscribeActive = onSnapshot(qActive, (snapshot) => {
+            const active = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data(),
+                name: doc.data().studentName,
+                progress: doc.data().progress || 0, // Fallback if not tracked yet
+                lastMeet: doc.data().lastMeet?.toDate().toLocaleDateString() || 'Not scheduled'
+            }));
+            setActiveStudents(active);
+        });
+
+        return () => {
+            unsubscribeRequests();
+            unsubscribeReviews();
+            unsubscribeActive();
+        };
+    }, [currentUser]);
+
+    // Auto-switch tab if only project reviews exist
+    useEffect(() => {
+        if (!loading && requests.length === 0 && projectReviews.length > 0 && activeTab === 'requests') {
+            setActiveTab('reviews');
         }
-    ]);
-
-    const [activeStudents, setActiveStudents] = useState([
-        { id: 101, name: "Fatima Adamu", topic: "Blockchain for Land Registry", progress: 65, lastMeet: "2 days ago" },
-        { id: 102, name: "David West", topic: "EdTech in Basic Schools", progress: 40, lastMeet: "1 week ago" }
-    ]);
-
-    const handleApprove = (id) => {
-        const student = requests.find(r => r.id === id);
-        if (student) {
-            setRequests(requests.filter(r => r.id !== id));
-            setActiveStudents([...activeStudents, { 
-                id: student.id + 100, 
-                name: student.studentName, 
-                topic: student.topic, 
-                progress: 0, 
-                lastMeet: "Never" 
-            }]);
-            toast.success(`You are now supervising ${student.studentName}`);
-        }
-    };
-
-    const handleDecline = (id) => {
-        setRequests(requests.filter(r => r.id !== id));
-        toast.info("Request declined.");
-    };
+    }, [loading, requests.length, projectReviews.length, activeTab]);
 
     return (
         <div className="flex h-screen overflow-hidden bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark font-sans transition-colors duration-200">
@@ -83,17 +115,24 @@ export const SupervisionManagementPage = () => {
 
                     {/* Tabs */}
                     <div className="border-b border-border-light dark:border-border-dark mb-6">
-                        <div className="flex space-x-8">
+                        <div className="flex space-x-8 overflow-x-auto">
                             <button
                                 onClick={() => setActiveTab('requests')}
-                                className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'requests' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                                className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors whitespace-nowrap ${activeTab === 'requests' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
                             >
-                                Pending Requests 
+                                Supervision Requests 
                                 {requests.length > 0 && <span className="ml-2 bg-red-100 text-red-600 py-0.5 px-2 rounded-full text-xs">{requests.length}</span>}
                             </button>
                             <button
+                                onClick={() => setActiveTab('reviews')}
+                                className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors whitespace-nowrap ${activeTab === 'reviews' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                            >
+                                Project Reviews
+                                {projectReviews.length > 0 && <span className="ml-2 bg-orange-100 text-orange-800 py-0.5 px-2 rounded-full text-xs">{projectReviews.length}</span>}
+                            </button>
+                            <button
                                 onClick={() => setActiveTab('active')}
-                                className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'active' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                                className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors whitespace-nowrap ${activeTab === 'active' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
                             >
                                 Active Students
                                 <span className="ml-2 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 py-0.5 px-2 rounded-full text-xs">{activeStudents.length}</span>
@@ -142,6 +181,49 @@ export const SupervisionManagementPage = () => {
                                                     className="flex-1 bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded-md text-sm font-medium shadow-sm transition-colors"
                                                 >
                                                     Review Proposal
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    ) : activeTab === 'reviews' ? (
+                        <div className="space-y-6">
+                            {projectReviews.length === 0 ? (
+                                <p className="text-gray-500 text-center py-12">No pending project reviews.</p>
+                            ) : (
+                                projectReviews.map((review) => (
+                                    <div 
+                                        key={review.id} 
+                                        onClick={() => navigate(`/lecturer/review/${review.id}`)}
+                                        className="bg-surface-light dark:bg-surface-dark p-6 rounded-xl border border-border-light dark:border-border-dark shadow-sm hover:shadow-md transition-shadow cursor-pointer group"
+                                    >
+                                        <div className="flex flex-col md:flex-row justify-between md:items-start gap-4">
+                                            <div className="flex-1">
+                                                <div className="flex items-center gap-3 mb-2">
+                                                    <h3 className="text-lg font-bold text-gray-900 dark:text-white group-hover:text-primary transition-colors">{review.title}</h3>
+                                                    <span className="px-2 py-0.5 rounded text-xs font-medium border bg-purple-100 text-purple-800 border-purple-200">
+                                                        Project Review
+                                                    </span>
+                                                    <span className="text-xs text-gray-500">{review.date}</span>
+                                                </div>
+                                                <p className="text-sm text-gray-600 dark:text-gray-300 mb-1"><span className="font-semibold">Student:</span> {review.studentName}</p>
+                                                <p className="text-sm text-gray-600 dark:text-gray-300 mb-3"><span className="font-semibold">Submitted:</span> {review.date}</p>
+                                                <div className="bg-gray-50 dark:bg-gray-800/50 p-3 rounded-lg border border-gray-100 dark:border-gray-700">
+                                                    <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Abstract</p>
+                                                    <p className="text-sm text-gray-700 dark:text-gray-300 italic line-clamp-2">"{review.abstract || 'No abstract provided'}"</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex md:flex-col gap-3 min-w-[120px]">
+                                                <button 
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        navigate(`/lecturer/review/${review.id}`);
+                                                    }}
+                                                    className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm font-medium shadow-sm transition-colors"
+                                                >
+                                                    Review Project
                                                 </button>
                                             </div>
                                         </div>

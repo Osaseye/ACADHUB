@@ -1,10 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Sidebar } from '../../../components/layout/Sidebar';
 import { useSidebar } from '../../../hooks/useSidebar';
 import { toast } from 'sonner';
+import { useAuth } from '../../../context/AuthContext';
+import { db } from '../../../config/firebase';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 
 export const LecturerSettingsPage = () => {
     const { isSidebarCollapsed, toggleSidebar } = useSidebar();
+    const { currentUser } = useAuth();
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
     
     // Theme State handled locally for demo (usually global context)
     const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -26,20 +32,77 @@ export const LecturerSettingsPage = () => {
     };
     
     // Lecturer Profile State
-    const [user, setUser] = useState({
-        name: "Dr. A. Bello",
-        email: "a.bello@cs.unilag.edu.ng",
-        institution: "University of Lagos",
-        department: "Computer Science",
-        role: "Senior Lecturer",
-        specialization: "Artificial Intelligence, Data Science",
-        bio: "Senior Lecturer with over 10 years experience in Machine Learning research. Currently leading the Green AI initiative.",
+    const [formData, setFormData] = useState({
+        displayName: "",
+        email: "",
+        department: "",
+        role: "Lecturer",
+        specialization: "",
+        bio: "",
+        institution: "University of Lagos" // Default if missing
     });
 
-    const handleSave = (e) => {
+    useEffect(() => {
+        const fetchUserData = async () => {
+            if (currentUser) {
+                try {
+                    const docRef = doc(db, 'users', currentUser.uid);
+                    const docSnap = await getDoc(docRef);
+                    if (docSnap.exists()) {
+                        const data = docSnap.data();
+                        setFormData({
+                            displayName: data.displayName || "",
+                            email: currentUser.email || "",
+                            department: data.department || "",
+                            role: data.role || "Lecturer",
+                            specialization: data.specialization || "",
+                            bio: data.bio || "",
+                            institution: data.institution || "University of Lagos"
+                        });
+                    }
+                } catch (error) {
+                    console.error("Error fetching user data:", error);
+                    toast.error("Failed to load profile data");
+                } finally {
+                    setLoading(false);
+                }
+            } else {
+                setLoading(false);
+            }
+        };
+
+        fetchUserData();
+    }, [currentUser]);
+
+    const handleSave = async (e) => {
         e.preventDefault();
-        toast.success("Profile settings updated!");
+        setSaving(true);
+        try {
+            const docRef = doc(db, 'users', currentUser.uid);
+            await updateDoc(docRef, {
+                displayName: formData.displayName,
+                department: formData.department,
+                specialization: formData.specialization,
+                bio: formData.bio,
+                institution: formData.institution
+                // Role is typically immutable or admin-managed, but we'll leave it as non-editable in UI mostly
+            });
+            toast.success("Profile settings updated!");
+        } catch (error) {
+            console.error("Error updating profile:", error);
+            toast.error("Failed to update profile");
+        } finally {
+            setSaving(false);
+        }
     };
+
+    if (loading) {
+        return (
+            <div className="flex h-screen items-center justify-center bg-background-light dark:bg-background-dark">
+                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+            </div>
+        );
+    }
 
     return (
         <div className="flex h-screen overflow-hidden bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark font-sans transition-colors duration-200">
@@ -66,8 +129,8 @@ export const LecturerSettingsPage = () => {
                                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Title & Full Name</label>
                                         <input 
                                             type="text" 
-                                            value={user.name}
-                                            onChange={(e) => setUser({...user, name: e.target.value})}
+                                            value={formData.displayName}
+                                            onChange={(e) => setFormData({...formData, displayName: e.target.value})}
                                             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                                         />
                                     </div>
@@ -75,17 +138,17 @@ export const LecturerSettingsPage = () => {
                                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Official Email</label>
                                         <input 
                                             type="email" 
-                                            value={user.email}
+                                            value={formData.email}
                                             disabled // Locked
                                             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 cursor-not-allowed"
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Academic Role</label>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Institution</label>
                                         <input 
                                             type="text" 
-                                            value={user.role}
-                                            onChange={(e) => setUser({...user, role: e.target.value})}
+                                            value={formData.institution}
+                                            onChange={(e) => setFormData({...formData, institution: e.target.value})}
                                             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                                         />
                                     </div>
@@ -93,8 +156,8 @@ export const LecturerSettingsPage = () => {
                                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Department</label>
                                         <input 
                                             type="text" 
-                                            value={user.department}
-                                            onChange={(e) => setUser({...user, department: e.target.value})}
+                                            value={formData.department}
+                                            onChange={(e) => setFormData({...formData, department: e.target.value})}
                                             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                                         />
                                     </div>
@@ -102,23 +165,30 @@ export const LecturerSettingsPage = () => {
                                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Research Specialization</label>
                                         <input 
                                             type="text" 
-                                            value={user.specialization}
-                                            onChange={(e) => setUser({...user, specialization: e.target.value})}
+                                            value={formData.specialization}
+                                            onChange={(e) => setFormData({...formData, specialization: e.target.value})}
                                             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                            placeholder="e.g. Artificial Intelligence, Data Science"
                                         />
                                     </div>
                                     <div className="md:col-span-2">
                                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Bio</label>
                                         <textarea 
                                             rows="4"
-                                            value={user.bio}
-                                            onChange={(e) => setUser({...user, bio: e.target.value})}
+                                            value={formData.bio}
+                                            onChange={(e) => setFormData({...formData, bio: e.target.value})}
                                             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white resize-none"
+                                            placeholder="Write a short bio about your academic background..."
                                         />
                                     </div>
                                 </div>
                                 <div className="flex justify-end pt-4">
-                                    <button type="submit" className="bg-primary hover:bg-sky-700 text-white px-6 py-2 rounded-md shadow-sm text-sm font-medium transition-colors">
+                                    <button 
+                                        type="submit" 
+                                        disabled={saving}
+                                        className="bg-primary hover:bg-sky-700 text-white px-6 py-2 rounded-md shadow-sm text-sm font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
+                                    >
+                                        {saving && <span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></span>}
                                         Save Changes
                                     </button>
                                 </div>

@@ -1,168 +1,140 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { Link } from 'react-router-dom';
 import { Sidebar } from '../../../components/layout/Sidebar';
 import { useSidebar } from '../../../hooks/useSidebar';
+import { useAuth } from '../../../context/AuthContext';
+import { db } from '../../../config/firebase';
+import { collection, getDocs, query, orderBy, where, addDoc, deleteDoc, doc } from 'firebase/firestore';
 
 export const RepositoryPage = () => {
     const { isSidebarCollapsed, toggleSidebar } = useSidebar();
+    const { currentUser } = useAuth();
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 5;
 
-    // Nigerian Context Data - Removed language/forks
-    const allRepositories = [
-        {
-            id: 1,
-            title: "fintech-adoption-lagos-sme",
-            description: "An empirical analysis of Fintech adoption rates among Small and Medium Enterprises in Lagos State. Includes survey data from 500 businesses.",
-            degree: "MSc",
-            type: "Public",
-            stars: "1.2k",
-            updated: "2 days ago",
-            author: "Chinedu Okeke",
-            institution: "LBS (Pan-Atlantic University)"
-        },
-        {
-            id: 2,
-            title: "sustainable-housing-materials-ng",
-            description: "Investigation into the viability of locally sourced laterite and bamboo as sustainable alternatives for low-cost housing in South-West Nigeria.",
-            degree: "PhD",
-            type: "Public",
-            stars: "890",
-            updated: "on Apr 14",
-            author: "Dr. Funmi Adebayo",
-            institution: "University of Lagos"
-        },
-        {
-            id: 3,
-            title: "malaria-vector-control-kano",
-            description: "Longitudinal study on the efficacy of insecticide-treated nets in suburban Kano metropolis. Analyzing resistance patterns in Anopheles mosquitoes.",
-            degree: "PhD",
-            type: "Public",
-            stars: "450",
-            updated: "on Mar 28",
-            author: "Ibrahim Musa",
-            institution: "Bayero University Kano"
-        },
-        {
-            id: 4,
-            title: "igbo-nlp-sentiment-corpus",
-            description: "The first large-scale annotated corpus for sentiment analysis in the Igbo language. Derived from social media text and news comments.",
-            degree: "MSc",
-            type: "Public",
-            stars: "312",
-            updated: "on Feb 10",
-            author: "Ngozi Udeh",
-            institution: "UNN"
-        },
-        {
-            id: 5,
-            title: "oil-spill-remediation-delta",
-            description: "Comparative analysis of bioremediation techniques for crude oil contaminated soil in the Niger Delta region using native bacterial consortiums.",
-            degree: "BSc",
-            type: "Public",
-            stars: "156",
-            updated: "yesterday",
-            author: "Efe Clark",
-            institution: "FUPre"
-        },
-        {
-            id: 6,
-            title: "renewable-microgrid-rural-electrification",
-            description: "Design and simulation of a solar-biomass hybrid microgrid for off-grid rural communities in Ogun State.",
-            degree: "MSc",
-            type: "Public",
-            stars: "204",
-            updated: "3 days ago",
-            author: "Tunde Bakare",
-            institution: "Covenant University"
-        },
-        {
-            id: 7,
-            title: "cassava-disease-detection-cnn",
-            description: "Deep learning mobile application model for early detection of Cassava Mosaic Disease for farmers in Oyo State.",
-            degree: "BSc",
-            type: "Public",
-            stars: "98",
-            updated: "1 week ago",
-            author: "Seyi Makinde",
-            institution: "FUTA"
-        },
-        {
-            id: 8,
-            title: "history-pre-colonial-trade-routes",
-            description: "Re-mapping the trans-Saharan trade routes of the 14th century emphasizing the role of the Kanem-Bornu Empire.",
-            degree: "PhD",
-            type: "Public",
-            stars: "567",
-            updated: "2 weeks ago",
-            author: "Dr. Amina Yusuf",
-            institution: "Ahmadu Bello University"
-        },
-        {
-            id: 9,
-            title: "educational-policy-nomadic-schools",
-            description: "Critical review of the Nomadic Education Programme effectiveness in improving literacy rates among pastoralist communities.",
-            degree: "MSc",
-            type: "Public",
-            stars: "134",
-            updated: "3 weeks ago",
-            author: "Yakubu Mohammed",
-            institution: "University of Abuja"
-        },
-        {
-            id: 10,
-            title: "solid-waste-management-ibadan",
-            description: "GIS-based optimization of municipal solid waste collection routes in Ibadan metropolis to reduce operational costs.",
-            degree: "MSc",
-            type: "Public",
-            stars: "245",
-            updated: "1 month ago",
-            author: "Kemi Ojo",
-            institution: "University of Ibadan"
-        },
-        {
-            id: 11,
-            title: "telemedicine-adoption-rural-clinics",
-            description: "Barriers and facilitators to the adoption of telemedicine platforms in primary healthcare centers in Ekiti State.",
-            degree: "PhD",
-            type: "Public",
-            stars: "310",
-            updated: "1 month ago",
-            author: "Dr. Bisi Fayemi",
-            institution: "Ekiti State University"
-        },
-        {
-            id: 12,
-            title: "youth-unemployment-entrepreneurship",
-            description: "The impact of government youth empowerment schemes (N-Power) on entrepreneurship development among graduates.",
-            degree: "BSc",
-            type: "Public",
-            stars: "88",
-            updated: "2 months ago",
-            author: "Emeka Obi",
-            institution: "Nnamdi Azikiwe University"
-        }
-    ];
+    // State for projects and filtering
+    const [projects, setProjects] = useState([]);
+    const [savedProjectIds, setSavedProjectIds] = useState(new Set());
+    const [loading, setLoading] = useState(true);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [selectedDegree, setSelectedDegree] = useState([]);
+    const [selectedDepartment, setSelectedDepartment] = useState('All');
+
+    // Fetch projects and saved items
+    useEffect(() => {
+        const fetchData = async () => {
+            setLoading(true);
+            try {
+                // Fetch Verified Projects
+                const projectsRef = collection(db, 'projects');
+                const qProjects = query(projectsRef, where('status', '==', 'verified'), orderBy('createdAt', 'desc'));
+                const projectsSnapshot = await getDocs(qProjects);
+                
+                const projectsData = projectsSnapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+                
+                setProjects(projectsData);
+
+                // Fetch Saved Items if user is logged in
+                if (currentUser) {
+                    const savedRef = collection(db, 'saved_items');
+                    const qSaved = query(savedRef, where("userId", "==", currentUser.uid));
+                    const savedSnapshot = await getDocs(qSaved);
+                    const savedIds = new Set(savedSnapshot.docs.map(doc => doc.data().projectId));
+                    setSavedProjectIds(savedIds);
+                }
+
+            } catch (error) {
+                console.error("Error fetching data:", error);
+                toast.error("Failed to load repository data.");
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchData();
+    }, [currentUser]);
+
+    // Handle Degree Filter Change
+    const handleDegreeChange = (degree) => {
+        setSelectedDegree(prev => {
+            if (prev.includes(degree)) {
+                return prev.filter(d => d !== degree);
+            } else {
+                return [...prev, degree];
+            }
+        });
+    };
+
+    // Filter Logic
+    const filteredProjects = projects.filter(project => {
+        const matchesSearch = (project.title?.toLowerCase() || '').includes(searchTerm.toLowerCase()) || 
+                              (project.abstract?.toLowerCase() || '').includes(searchTerm.toLowerCase());
+        const matchesDepartment = selectedDepartment === 'All' || project.department === selectedDepartment;
+        const matchesDegree = selectedDegree.length === 0 || selectedDegree.includes(project.degree);
+
+        return matchesSearch && matchesDepartment && matchesDegree;
+    });
 
     // Pagination Logic
     const indexOfLastItem = currentPage * itemsPerPage;
     const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-    const currentRepositories = allRepositories.slice(indexOfFirstItem, indexOfLastItem);
-    const totalPages = Math.ceil(allRepositories.length / itemsPerPage);
+    const currentRepositories = filteredProjects.slice(indexOfFirstItem, indexOfLastItem);
+    const totalPages = Math.ceil(filteredProjects.length / itemsPerPage);
 
     const handlePageChange = (pageNumber) => {
         setCurrentPage(pageNumber);
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
-    const handleStar = (repoTitle) => {
-        // Randomly succeed or fail for demo purposes
-        const isSuccess = Math.random() > 0.3; 
-        if (isSuccess) {
-            toast.success(`Starred "${repoTitle}" successfully!`);
-        } else {
-            toast.error(`Failed to star "${repoTitle}". Please try again.`);
+    const handleStar = async (project) => {
+        if (!currentUser) {
+            toast.error("Please log in to save items");
+            return;
+        }
+
+        try {
+            if (savedProjectIds.has(project.id)) {
+                // Remove from saved
+                const q = query(
+                    collection(db, 'saved_items'), 
+                    where("userId", "==", currentUser.uid),
+                    where("projectId", "==", project.id)
+                );
+                const querySnapshot = await getDocs(q);
+                
+                querySnapshot.forEach(async (docSnap) => {
+                    await deleteDoc(doc(db, 'saved_items', docSnap.id));
+                });
+
+                setSavedProjectIds(prev => {
+                    const newSet = new Set(prev);
+                    newSet.delete(project.id);
+                    return newSet;
+                });
+                toast.success(`Removed "${project.title}" from saved items`);
+            } else {
+                // Add to saved
+                await addDoc(collection(db, 'saved_items'), {
+                    userId: currentUser.uid,
+                    projectId: project.id,
+                    projectTitle: project.title,
+                    savedAt: new Date()
+                });
+
+                setSavedProjectIds(prev => {
+                    const newSet = new Set(prev);
+                    newSet.add(project.id);
+                    return newSet;
+                });
+                toast.success(`Saved "${project.title}"`);
+            }
+        } catch (error) {
+            console.error("Error toggling save:", error);
+            toast.error("Failed to update saved status");
         }
     };
 
@@ -192,12 +164,12 @@ export const RepositoryPage = () => {
                             <h3 className="text-sm font-semibold mb-3">Quick Stats</h3>
                             <div className="flex items-center justify-between mb-2">
                                 <span className="text-sm text-text-muted-light dark:text-text-muted-dark">Results found</span>
-                                <span className="text-sm font-mono font-bold">{allRepositories.length}</span>
+                                <span className="text-sm font-mono font-bold">{filteredProjects.length}</span>
                             </div>
                             <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 mb-2">
-                                <div className="bg-secondary h-1.5 rounded-full" style={{width: "45%"}}></div>
+                                <div className="bg-secondary h-1.5 rounded-full" style={{width: `${Math.min((filteredProjects.length / projects.length) * 100, 100)}%`}}></div>
                             </div>
-                            <span className="text-xs text-text-muted-light dark:text-text-muted-dark">Top 10% of repositories match your profile</span>
+                            <span className="text-xs text-text-muted-light dark:text-text-muted-dark">Showing {itemsPerPage} items per page</span>
                         </div>
 
                         {/* Filters */}
@@ -208,15 +180,15 @@ export const RepositoryPage = () => {
                             <div>
                                 <label className="text-xs font-semibold text-text-muted-light dark:text-text-muted-dark uppercase mb-2 block">Degree Level</label>
                                 <div className="space-y-2">
-                                    {[
-                                        { label: "PhD Thesis", count: 15 },
-                                        { label: "MSc Dissertation", count: 42 },
-                                        { label: "BSc Project", count: 88 }
-                                    ].map((item, idx) => (
-                                        <label key={idx} className="flex items-center gap-2 cursor-pointer group">
-                                            <input className="rounded border-border-light dark:border-border-dark bg-background-light dark:bg-background-dark text-primary focus:ring-0" type="checkbox"/>
-                                            <span className="text-sm group-hover:text-secondary transition-colors">{item.label}</span>
-                                            <span className="ml-auto bg-gray-100 dark:bg-gray-800 text-xs px-2 py-0.5 rounded-full text-text-muted-light dark:text-text-muted-dark">{item.count}</span>
+                                    {['PhD', 'MSc', 'BSc'].map((degree) => (
+                                        <label key={degree} className="flex items-center gap-2 cursor-pointer group">
+                                            <input 
+                                                className="rounded border-border-light dark:border-border-dark bg-background-light dark:bg-background-dark text-primary focus:ring-0" 
+                                                type="checkbox"
+                                                checked={selectedDegree.includes(degree)}
+                                                onChange={() => handleDegreeChange(degree)}
+                                            />
+                                            <span className="text-sm group-hover:text-secondary transition-colors">{degree}</span>
                                         </label>
                                     ))}
                                 </div>
@@ -225,17 +197,23 @@ export const RepositoryPage = () => {
                             {/* Department */}
                             <div>
                                 <label className="text-xs font-semibold text-text-muted-light dark:text-text-muted-dark uppercase mb-2 block">Department</label>
-                                <select className="w-full bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md text-sm py-1.5 px-2 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none">
-                                    <option>Computer Science</option>
-                                    <option>Economics</option>
-                                    <option>Agriculture</option>
-                                    <option>Public Health</option>
-                                    <option>History</option>
-                                    <option>Engineering</option>
+                                <select 
+                                    value={selectedDepartment}
+                                    onChange={(e) => setSelectedDepartment(e.target.value)}
+                                    className="w-full bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md text-sm py-1.5 px-2 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none"
+                                >
+                                    <option value="All">All Departments</option>
+                                    <option value="Computer Science">Computer Science</option>
+                                    <option value="Economics">Economics</option>
+                                    <option value="Agriculture">Agriculture</option>
+                                    <option value="Public Health">Public Health</option>
+                                    <option value="History">History</option>
+                                    <option value="Engineering">Engineering</option>
+                                    {/* Add other departments as needed */}
                                 </select>
                             </div>
 
-                            {/* Year Range */}
+                            {/* Year Range (Placeholder for now but kept structure) */}
                             <div>
                                 <label className="text-xs font-semibold text-text-muted-light dark:text-text-muted-dark uppercase mb-2 block">Year Range</label>
                                 <div className="flex items-center gap-2">
@@ -270,6 +248,8 @@ export const RepositoryPage = () => {
                                     </div>
                                     <input 
                                         type="text" 
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
                                         className="w-full pl-10 pr-4 py-2 bg-background-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md focus:ring-2 focus:ring-secondary focus:border-secondary dark:text-white transition-shadow outline-none" 
                                         placeholder="Find a repository by title, author or keyword..."
                                     />
@@ -282,59 +262,75 @@ export const RepositoryPage = () => {
                                         <span className="material-symbols-outlined ml-2 -mr-1 text-[20px]">arrow_drop_down</span>
                                     </button>
                                 </div>
-                                <button className="bg-primary hover:bg-blue-800 text-white font-medium py-2 px-4 rounded-md flex items-center gap-2 text-sm transition-colors shadow-sm">
+                                <Link to="/uploads/new" className="bg-primary hover:bg-blue-800 text-white font-medium py-2 px-4 rounded-md flex items-center gap-2 text-sm transition-colors shadow-sm">
                                     <span className="material-symbols-outlined text-sm">book</span>
                                     New Project
-                                </button>
+                                </Link>
                             </div>
                         </div>
 
                         {/* Repository List */}
                         <div className="bg-background-light dark:bg-surface-dark rounded-md border border-border-light dark:border-border-dark divide-y divide-border-light dark:divide-border-dark shadow-sm">
-                            {currentRepositories.map(repo => (
-                                <div key={repo.id} className="p-4 hover:bg-surface-light dark:hover:bg-background-dark transition-colors group">
-                                    <div className="flex items-start justify-between">
-                                        <div className="flex-1">
-                                            <div className="flex items-center gap-3 mb-1">
-                                                <span className="material-symbols-outlined text-text-muted-light dark:text-text-muted-dark text-[20px]">bookmark_border</span>
-                                                <h3 className="text-base font-semibold">
-                                                    <Link to={`/repository/${repo.id}`} className="text-secondary hover:underline break-all cursor-pointer">{repo.title}</Link>
-                                                </h3>
-                                                <span className={`${getBadgeStyle(repo.degree)} text-xs font-medium px-2 py-0.5 rounded-full border`}>
-                                                    {repo.degree}
-                                                </span>
-                                                <span className="text-xs border border-border-light dark:border-border-dark rounded-full px-2 py-0.5 text-text-muted-light dark:text-text-muted-dark font-medium">
-                                                    {repo.type}
-                                                </span>
+                            {loading ? (
+                                <div className="text-center py-12 px-4">
+                                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+                                     <p className="text-text-muted-light dark:text-text-muted-dark">Loading projects...</p>
+                                </div>
+                            ) : currentRepositories.length === 0 ? (
+                                <div className="text-center py-12 px-4">
+                                    <span className="material-symbols-outlined text-4xl text-text-muted-light dark:text-text-muted-dark mb-3">library_books</span>
+                                    <h3 className="text-lg font-medium text-text-light dark:text-white">No research papers found</h3>
+                                    <p className="text-text-muted-light dark:text-text-muted-dark mt-1">Try adjusting your search criteria or check back later.</p>
+                                </div>
+                            ) : (
+                                currentRepositories.map(repo => (
+                                    <div key={repo.id} className="p-4 hover:bg-surface-light dark:hover:bg-background-dark transition-colors group">
+                                        <div className="flex items-start justify-between">
+                                            <div className="flex-1">
+                                                <div className="flex items-center gap-3 mb-1">
+                                                    <span className="material-symbols-outlined text-text-muted-light dark:text-text-muted-dark text-[20px]">bookmark_border</span>
+                                                    <h3 className="text-base font-semibold">
+                                                        <Link to={`/repository/${repo.id}`} className="text-secondary hover:underline break-all cursor-pointer">{repo.title}</Link>
+                                                    </h3>
+                                                    <span className={`${getBadgeStyle(repo.degree)} text-xs font-medium px-2 py-0.5 rounded-full border`}>
+                                                        {repo.degree}
+                                                    </span>
+                                                </div>
+                                                <p className="text-sm text-text-muted-light dark:text-text-muted-dark mb-3 line-clamp-2 max-w-3xl">
+                                                    {repo.abstract || repo.description || "No description available."}
+                                                </p>
+                                                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-text-muted-light dark:text-text-muted-dark">
+                                                    <div className="flex items-center gap-1 hover:text-secondary cursor-pointer transition-colors">
+                                                        <span className="material-symbols-outlined text-[16px]">star_border</span>
+                                                        <span>{repo.stars || 0}</span>
+                                                    </div>
+                                                    <div>
+                                                        Year <span className="font-mono">{repo.year}</span>
+                                                    </div>
+                                                    <div className="hidden sm:block text-text-light dark:text-white opacity-60">
+                                                        by <span className="font-medium">{repo.studentName}</span> ({repo.department})
+                                                    </div>
+                                                </div>
                                             </div>
-                                            <p className="text-sm text-text-muted-light dark:text-text-muted-dark mb-3 line-clamp-2 max-w-3xl">
-                                                {repo.description}
-                                            </p>
-                                            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-text-muted-light dark:text-text-muted-dark">
-                                                <div className="flex items-center gap-1 hover:text-secondary cursor-pointer transition-colors">
-                                                    <span className="material-symbols-outlined text-[16px]">star_border</span>
-                                                    <span>{repo.stars}</span>
-                                                </div>
-                                                <div>
-                                                    Updated <span className="font-mono">{repo.updated}</span>
-                                                </div>
-                                                <div className="hidden sm:block text-text-light dark:text-white opacity-60">
-                                                    by <span className="font-medium">{repo.author}</span> ({repo.institution})
-                                                </div>
+                                            <div className="hidden sm:flex flex-col items-end gap-2">
+                                                <button 
+                                                    onClick={() => handleStar(repo)}
+                                                    className={`flex items-center gap-1 px-3 py-1 border rounded-md text-xs font-medium transition-colors shadow-sm active:scale-95 ${
+                                                        savedProjectIds.has(repo.id)
+                                                        ? "bg-primary text-white border-primary hover:bg-primary/90"
+                                                        : "bg-surface-light dark:bg-background-dark border-border-light dark:border-border-dark text-text-light dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700"
+                                                    }`}
+                                                >
+                                                    <span className={`material-symbols-outlined text-[16px] ${savedProjectIds.has(repo.id) ? "filled" : ""}`}>
+                                                        {savedProjectIds.has(repo.id) ? "bookmark" : "bookmark_border"}
+                                                    </span>
+                                                    {savedProjectIds.has(repo.id) ? "Saved" : "Save"}
+                                                </button>
                                             </div>
-                                        </div>
-                                        <div className="hidden sm:flex flex-col items-end gap-2">
-                                            <button 
-                                                onClick={() => handleStar(repo.title)}
-                                                className="flex items-center gap-1 px-3 py-1 bg-surface-light dark:bg-background-dark border border-border-light dark:border-border-dark rounded-md text-xs font-medium text-text-light dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors shadow-sm active:scale-95"
-                                            >
-                                                <span className="material-symbols-outlined text-[16px]">star_border</span>
-                                                Star
-                                            </button>
                                         </div>
                                     </div>
-                                </div>
-                            ))}
+                                ))
+                            )}
                         </div>
 
                         {/* Pagination */}

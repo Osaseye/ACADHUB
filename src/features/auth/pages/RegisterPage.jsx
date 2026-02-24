@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { useAuth } from "../../../context/AuthContext";
 import { AuthLayout } from "../layout/AuthLayout";
 import { Input } from "../../../components/ui/Input";
 import { Button } from "../../../components/ui/Button";
@@ -11,6 +12,7 @@ const STEP_ACCOUNT = "STEP_ACCOUNT";
 
 export const RegisterPage = () => {
   const navigate = useNavigate();
+  const { register } = useAuth();
   const [currentStep, setCurrentStep] = useState(STEP_ROLE);
   const [selectedRole, setSelectedRole] = useState(""); // "student" | "lecturer"
   const [showPassword, setShowPassword] = useState(false);
@@ -39,7 +41,7 @@ export const RegisterPage = () => {
     setError(""); // Reset errors
   };
 
-  const handleAccountSubmit = (e) => {
+  const handleAccountSubmit = async (e) => {
     e.preventDefault();
      if (!validateEmail(formData.email)) {
       setError("Please use a valid school email address (.edu, .ac., etc.)");
@@ -49,9 +51,13 @@ export const RegisterPage = () => {
     
     setIsLoading(true);
 
-    // Simulate Backend API
-    setTimeout(() => {
-        setIsLoading(false);
+    try {
+        await register(formData.email, formData.password, selectedRole, {
+            displayName: formData.username,
+            status: 'active',
+            isVerified: false 
+        });
+
         toast.success("Account created successfully!");
         
         // Redirect based on role
@@ -63,7 +69,13 @@ export const RegisterPage = () => {
         } else {
             navigate("/dashboard"); 
         }
-    }, 1500);
+    } catch (err) {
+        console.error("Registration Error", err);
+        setError("Registration failed: " + err.message);
+        toast.error("Account creation failed");
+    } finally {
+        setIsLoading(false);
+    }
   };
 
   return (

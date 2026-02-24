@@ -1,24 +1,33 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { useAuth } from "../../../context/AuthContext";
 import { AuthLayout } from "../layout/AuthLayout";
 import { Input } from "../../../components/ui/Input";
 import { Button } from "../../../components/ui/Button";
 
 export const LoginPage = () => {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
-    // Simulate API call
-    setTimeout(() => {
-        setIsLoading(false);
-        toast.success("Welcome back!");
-        navigate("/dashboard");
-    }, 1500);
+    
+    try {
+      await login(email, password);
+      toast.success("Welcome back!");
+      navigate("/dashboard");
+    } catch (error) {
+      toast.error("Invalid credentials");
+      console.error(error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -30,10 +39,12 @@ export const LoginPage = () => {
         <Input 
           label="School Email address" 
           id="identity" 
-          type="text" 
+          type="email" 
           placeholder="Enter your academic email"
           required 
           autoFocus
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
         />
         
         <div className="relative">
@@ -50,6 +61,8 @@ export const LoginPage = () => {
                     id="password"
                     type={showPassword ? "text" : "password"}
                     required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
                     className="w-full px-4 py-3 bg-white dark:bg-[#0d1117] border border-border-light dark:border-border-dark rounded-lg shadow-sm outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 text-text-light dark:text-white pr-10"
                 />
                 <button

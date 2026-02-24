@@ -1,8 +1,19 @@
 import React from 'react';
 import { NavLink, Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 
 export const Sidebar = ({ isCollapsed, toggleSidebar, role = 'student' }) => {
     const navigate = useNavigate();
+    const { currentUser, logout } = useAuth();
+
+    const handleLogout = async () => {
+        try {
+            await logout();
+            navigate('/login');
+        } catch (error) {
+            console.error("Failed to log out", error);
+        }
+    };
 
     const studentItems = [
         { icon: "dashboard", label: "Dashboard", path: "/dashboard" },
@@ -120,21 +131,36 @@ export const Sidebar = ({ isCollapsed, toggleSidebar, role = 'student' }) => {
             </nav>
 
             {/* User Profile Footer */}
-            <div className="p-4 border-t border-border-light dark:border-border-dark">
-                <button className={`flex items-center w-full group ${isCollapsed ? "justify-center" : ""}`}>
+            <div className="p-4 border-t border-border-light dark:border-border-dark flex flex-col gap-4">
+                <div className={`flex items-center w-full group ${isCollapsed ? "justify-center" : ""} overflow-hidden`}>
                     <div className={`h-9 w-9 flex-shrink-0 rounded-full flex items-center justify-center text-white font-bold text-sm ${role === 'admin' ? "bg-red-600" : (role === 'lecturer' ? "bg-gradient-to-tr from-purple-500 to-indigo-500" : "bg-gradient-to-tr from-blue-500 to-cyan-400")}`}>
-                        {role === 'admin' ? "AD" : (role === 'lecturer' ? "DR" : "JD")}
+                        {
+                            currentUser?.displayName 
+                                ? currentUser.displayName.charAt(0).toUpperCase() + (currentUser.displayName.split(' ')[1]?.[0]?.toUpperCase() || '')
+                                : (role === 'admin' ? "AD" : (role === 'lecturer' ? "DR" : "JD"))
+                        }
                     </div>
                     {!isCollapsed && (
-                        <div className="ml-3 text-left overflow-hidden">
+                        <div className="ml-3 text-left overflow-hidden min-w-0">
                             <p className="text-sm font-medium text-text-light dark:text-white group-hover:text-primary transition-colors truncate">
-                                {role === 'admin' ? "System Admin" : (role === 'lecturer' ? "Dr. A. Bello" : "John Doe")}
+                                {currentUser?.displayName || (role === 'admin' ? "System Admin" : (role === 'lecturer' ? "Dr. A. Bello" : "John Doe"))}
                             </p>
                             <p className="text-xs text-text-muted-light dark:text-text-muted-dark truncate">
-                                {role === 'admin' ? "IT Directorate" : (role === 'lecturer' ? "Snr. Lecturer, CS" : "Computer Science, MSc")}
+                                {currentUser?.department || currentUser?.email || (role === 'admin' ? "IT Directorate" : (role === 'lecturer' ? "Snr. Lecturer, CS" : "Department"))}
                             </p>
                         </div>
                     )}
+                </div>
+
+                <div className="h-px w-full bg-border-light dark:bg-border-dark"></div>
+
+                <button 
+                    onClick={handleLogout}
+                     className={`flex items-center w-full group text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 p-2 rounded-md transition-colors ${isCollapsed ? "justify-center" : ""}`}
+                     title="Sign Out"
+                >
+                     <span className="material-symbols-outlined text-[20px]">logout</span>
+                     {!isCollapsed && <span className="ml-3 text-sm font-medium">Sign Out</span>}
                 </button>
             </div>
         </aside>

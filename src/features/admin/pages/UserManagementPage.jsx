@@ -9,15 +9,7 @@ export const UserManagementPage = () => {
     const [roleFilter, setRoleFilter] = useState('all');
 
     // Mock User Data
-    const [users, setUsers] = useState([
-        { id: 1, name: "Dr. Sarah Jenkins", email: "s.jenkins@university.edu", role: "lecturer", department: "Computer Science", status: "active", joinDate: "2023-01-15" },
-        { id: 2, name: "Michael Chen", email: "m.chen@student.edu", role: "student", department: "Physics", status: "active", joinDate: "2023-03-22" },
-        { id: 3, name: "Admin Sys", email: "admin@acadhub.io", role: "admin", department: "IT Services", status: "active", joinDate: "2022-11-01" },
-        { id: 4, name: "Chinedu Okeke", email: "c.okeke@student.edu", role: "student", department: "Engineering", status: "suspended", joinDate: "2023-06-10" },
-        { id: 5, name: "Priya Patel", email: "p.patel@university.edu", role: "lecturer", department: "Biology", status: "active", joinDate: "2023-02-28" },
-        { id: 6, name: "James Miller", email: "j.miller@student.edu", role: "student", department: "Mathematics", status: "inactive", joinDate: "2023-09-05" },
-        { id: 7, name: "Alice Wong", email: "a.wong@university.edu", role: "lecturer", department: "Chemistry", status: "active", joinDate: "2023-04-12" },
-    ]);
+    const [users, setUsers] = useState([]);
 
     const handleStatusChange = (userId, newStatus) => {
         setUsers(users.map(user => user.id === userId ? { ...user, status: newStatus } : user));
@@ -198,7 +190,7 @@ export const UserManagementPage = () => {
                         {/* Simple Pagination */}
                         <div className="bg-gray-50 dark:bg-gray-800/50 px-6 py-4 border-t border-gray-200 dark:border-[#30363D] flex items-center justify-between">
                             <span className="text-xs text-gray-500 dark:text-gray-400">
-                                Showing <span className="font-medium text-gray-900 dark:text-white">1</span> to <span className="font-medium text-gray-900 dark:text-white">{filteredUsers.length}</span> of <span className="font-medium text-gray-900 dark:text-white">{users.length}</span> results
+                                Showing <span className="font-medium text-gray-900 dark:text-white">0</span> to <span className="font-medium text-gray-900 dark:text-white">{filteredUsers.length}</span> of <span className="font-medium text-gray-900 dark:text-white">{users.length}</span> results
                             </span>
                             <div className="flex gap-2">
                                 <button className="px-3 py-1 border border-gray-200 dark:border-[#30363D] bg-white dark:bg-[#161B22] rounded text-xs font-medium text-gray-500 disabled:opacity-50" disabled>Previous</button>

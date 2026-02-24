@@ -7,41 +7,7 @@ export const ContentModerationPage = () => {
     const [activeTab, setActiveTab] = useState('pending');
 
     // Mock Data for Reports
-    const reports = [
-        {
-            id: 1,
-            type: 'comment',
-            content: "This project is completely useless and you should quit.",
-            author: "User_882",
-            reportedBy: "Sarah Jenkins",
-            reason: "Harassment / Bullying",
-            timestamp: "10 mins ago",
-            severity: "high",
-            location: "Project: Quantum Sim"
-        },
-        {
-            id: 2,
-            type: 'project',
-            content: "Research Paper: Analysis of Dark Matter",
-            author: "Michael Chen",
-            reportedBy: "Dr. Al-Fayed",
-            reason: "Plagiarism Suspected",
-            timestamp: "2 hours ago",
-            severity: "critical",
-            location: "Repository"
-        },
-        {
-            id: 3,
-            type: 'user',
-            content: "Profile Bio: Crypto scam links...",
-            author: "Bot_221",
-            reportedBy: "System (AI)",
-            reason: "Spam / Bot Activity",
-            timestamp: "5 hours ago",
-            severity: "medium",
-            location: "Profile Page"
-        }
-    ];
+    const reports = [];
 
     const getSeverityColor = (severity) => {
         switch(severity) {
@@ -71,7 +37,7 @@ export const ContentModerationPage = () => {
                         <div className="flex gap-2">
                             <span className="px-3 py-1 bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-full text-xs font-bold border border-red-200 dark:border-red-800 flex items-center gap-2">
                                 <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse"></span>
-                                3 Critical Actions
+                                0 Critical Actions
                             </span>
                         </div>
                     </div>
@@ -87,7 +53,7 @@ export const ContentModerationPage = () => {
                                     : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
                                 }`}
                             >
-                                Pending Review <span className="ml-2 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 py-0.5 px-2 rounded-full text-xs">3</span>
+                                Pending Review <span className="ml-2 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 py-0.5 px-2 rounded-full text-xs">0</span>
                             </button>
                             <button
                                 onClick={() => setActiveTab('resolved')}

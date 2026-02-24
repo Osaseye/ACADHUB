@@ -9,11 +9,7 @@ export const VerificationRequestsPage = () => {
     const [selectedRequest, setSelectedRequest] = useState(null); // For modal/detail view
 
     // Mock Requests
-    const [requests, setRequests] = useState([
-        { id: 1, name: "Dr. Sarah Jenkins", email: "s.jenkins@unilag.edu.ng", institution: "University of Lagos", department: "Computer Science", date: "2024-02-12", status: "pending", file: "staff_id.jpg" },
-        { id: 2, name: "Prof. Adebayo", email: "adebayo@ui.edu.ng", institution: "University of Ibadan", department: "Physics", date: "2024-02-11", status: "pending", file: "letter_appt.pdf" },
-        { id: 3, name: "Dr. Chidinma Obi", email: "c.obi@covenant.edu.ng", institution: "Covenant University", department: "Business Admin", date: "2024-02-10", status: "pending", file: "id_scan.png" },
-    ]);
+    const [requests, setRequests] = useState([]);
 
     const handleApprove = (id) => {
         toast.success("Lecturer Approved successfully");

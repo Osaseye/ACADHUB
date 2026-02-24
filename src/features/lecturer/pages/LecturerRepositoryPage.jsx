@@ -1,61 +1,57 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Sidebar } from '../../../components/layout/Sidebar';
 import { useSidebar } from '../../../hooks/useSidebar';
 import { Link } from 'react-router-dom';
+import { db } from '../../../config/firebase';
+import { collection, query, orderBy, onSnapshot, limit, where } from 'firebase/firestore';
 
 export const LecturerRepositoryPage = () => {
     const { isSidebarCollapsed, toggleSidebar } = useSidebar();
     const [searchTerm, setSearchTerm] = useState('');
+    const [projects, setProjects] = useState([]);
+    const [loading, setLoading] = useState(true);
 
-    // Lecturer-focused mock data (perhaps larger scope or includes restricted papers)
-    const allRepositories = [
-        {
-            id: 1,
-            title: "fintech-adoption-lagos-sme",
-            description: "An empirical analysis of Fintech adoption rates among Small and Medium Enterprises in Lagos State.",
-            degree: "MSc",
-            type: "Public",
-            stars: "1.2k",
-            updated: "2 days ago",
-            author: "Chinedu Okeke",
-            institution: "LBS (Pan-Atlantic University)"
-        },
-        {
-            id: 2,
-            title: "sustainable-housing-materials-ng",
-            description: "Investigation into the viability of locally sourced laterite and bamboo as sustainable alternatives.",
-            degree: "PhD",
-            type: "Public",
-            stars: "890",
-            updated: "on Apr 14",
-            author: "Dr. Funmi Adebayo",
-            institution: "University of Lagos"
-        },
-        // ... more items
-         {
-            id: 8,
-            title: "history-pre-colonial-trade-routes",
-            description: "Re-mapping the trans-Saharan trade routes of the 14th century emphasizing the role of the Kanem-Bornu Empire.",
-            degree: "PhD",
-            type: "Public",
-            stars: "567",
-            updated: "2 weeks ago",
-            author: "Dr. Amina Yusuf",
-            institution: "Ahmadu Bello University"
-        },
-    ];
+    useEffect(() => {
+        // Fetch verified projects only
+        const q = query(
+            collection(db, 'projects'),
+            where('status', '==', 'verified'),
+            orderBy('createdAt', 'desc'),
+            limit(50)
+        );
 
-     const filteredRepos = allRepositories.filter(repo => 
-        repo.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        repo.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        repo.author.toLowerCase().includes(searchTerm.toLowerCase())
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const fetchedProjects = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data(),
+                description: doc.data().abstract || "No description provided",
+                author: doc.data().authorName || "Unknown Author",
+                institution: doc.data().university || "Unknown Institution",
+                updated: doc.data().createdAt?.toDate().toLocaleDateString() || 'Recently',
+                stars: doc.data().likes || 0,
+                degree: "Research" // Default tag
+            }));
+            setProjects(fetchedProjects);
+            setLoading(false);
+        }, (error) => {
+            console.error("Error fetching repository:", error);
+            setLoading(false);
+        });
+
+        return () => unsubscribe();
+    }, []);
+
+     const filteredRepos = projects.filter(repo => 
+        (repo.title && repo.title.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (repo.description && repo.description.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (repo.author && repo.author.toLowerCase().includes(searchTerm.toLowerCase()))
     );
 
     return (
         <div className="flex h-screen overflow-hidden bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark font-sans transition-colors duration-200">
             <Sidebar 
                 isCollapsed={isSidebarCollapsed} 
-                toggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)} 
+                toggleSidebar={toggleSidebar} 
                 role="lecturer"
             />
 
@@ -95,9 +91,20 @@ export const LecturerRepositoryPage = () => {
 
                     {/* Repo Grid */}
                     <div className="space-y-4">
-                        {filteredRepos.map((repo) => (
-                             <div key={repo.id} className="bg-surface-light dark:bg-surface-dark p-6 rounded-lg border border-border-light dark:border-border-dark shadow-sm hover:shadow-md transition-shadow">
-                                <div className="flex justify-between items-start">
+                        {loading ? (
+                             <div className="text-center py-12">
+                                <span className="text-gray-500">Loading repository...</span>
+                             </div>
+                        ) : filteredRepos.length === 0 ? (
+                            <div className="text-center py-12 bg-surface-light dark:bg-surface-dark rounded-xl border border-border-light dark:border-border-dark">
+                                <span className="material-symbols-outlined text-4xl text-gray-400 mb-3">search_off</span>
+                                <h3 className="text-lg font-medium text-gray-900 dark:text-white">No repositories found</h3>
+                                <p className="text-gray-500 dark:text-gray-400 mt-1">Try adjusting your search or filters.</p>
+                            </div>
+                        ) : (
+                            filteredRepos.map((repo) => (
+                                 <div key={repo.id} className="bg-surface-light dark:bg-surface-dark p-6 rounded-lg border border-border-light dark:border-border-dark shadow-sm hover:shadow-md transition-shadow">
+                                    <div className="flex justify-between items-start">
                                     <div className="flex-1">
                                          <div className="flex items-center gap-2 mb-1">
                                             <Link to={`/lecturer/repository/${repo.id}`} className="text-lg font-bold text-primary dark:text-sky-400 hover:underline">
@@ -130,7 +137,8 @@ export const LecturerRepositoryPage = () => {
                                     </div>
                                 </div>
                              </div>
-                        ))}
+                            ))
+                        )}
                     </div>
 
                 </div>

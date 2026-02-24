@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { toast } from "sonner";
+import { useAuth } from "../../../context/AuthContext";
+import { db, storage } from "../../../config/firebase";
+import { doc, updateDoc } from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { NIGERIAN_UNIVERSITIES } from "../../../data/universities";
 
 // Steps
 const STEP_PROFILE = 1;
@@ -10,13 +15,16 @@ const STEP_PREFERENCES = 3;
 export const LecturerOnboardingPage = () => {
     const navigate = useNavigate();
     const location = useLocation();
+    const { currentUser } = useAuth();
     const [currentStep, setCurrentStep] = useState(STEP_PROFILE);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [verificationFile, setVerificationFile] = useState(null);
     const [formData, setFormData] = useState({
         // Profile Data
         title: "",
         rank: "",
         institution: "",
-        department: "",
+        department: "Computer Science", // Default for demo
         staffId: "",
         // Expertise Data
         expertise: [],
@@ -31,14 +39,33 @@ export const LecturerOnboardingPage = () => {
             const email = location.state.email;
             const domain = email.split("@")[1];
             if (domain) {
-                let institutionName = "";
-                if (domain.includes("unilag.edu.ng")) institutionName = "University of Lagos";
-                else if (domain.includes("ui.edu.ng")) institutionName = "University of Ibadan";
-                else if (domain.includes("covenant")) institutionName = "Covenant University";
+                // Heuristics for Nigerian Schools mapped to our list
+                const searchTerms = [
+                    { key: "babcock", term: "Babcock University" },
+                    { key: "covenant", term: "Covenant University" },
+                    { key: "unilag", term: "University of Lagos" },
+                    { key: "ui.edu.ng", term: "University of Ibadan" },
+                    { key: "unn.edu.ng", term: "University of Nigeria" },
+                    { key: "abu.edu.ng", term: "Ahmadu Bello University" },
+                    { key: "oau.edu.ng", term: "Obafemi Awolowo University" },
+                    { key: "lasu.edu.ng", term: "Lagos State University" },
+                    { key: "futa.edu.ng", term: "Federal University of Technology, Akure" },
+                    { key: "futminna.edu.ng", term: "Federal University of Technology, Minna" },
+                    { key: "unilorin.edu.ng", term: "University of Ilorin" },
+                    { key: "uniben.edu", term: "University of Benin" }
+                ];
+
+                let matchedUni = "";
+                for (const item of searchTerms) {
+                    if (domain.includes(item.key)) {
+                        matchedUni = NIGERIAN_UNIVERSITIES.find(u => u.includes(item.term));
+                        break;
+                    }
+                }
                 
-                if (institutionName) {
-                    setFormData(prev => ({ ...prev, institution: institutionName }));
-                    toast.info(`Institution detected: ${institutionName}`);
+                if (matchedUni) {
+                    setFormData(prev => ({ ...prev, institution: matchedUni }));
+                    toast.info(`Institution detected: ${matchedUni}`);
                 }
             }
         }
@@ -46,6 +73,12 @@ export const LecturerOnboardingPage = () => {
 
     const updateData = (field, value) => {
         setFormData(prev => ({ ...prev, [field]: value }));
+    };
+
+    const handleFileChange = (e) => {
+        if (e.target.files[0]) {
+            setVerificationFile(e.target.files[0]);
+        }
     };
 
     const toggleExpertise = (tag) => {
@@ -57,7 +90,7 @@ export const LecturerOnboardingPage = () => {
         });
     };
 
-    const handleNext = () => {
+    const handleNext = async () => {
         if (currentStep === STEP_PROFILE) {
             if (!formData.title || !formData.rank || !formData.institution || !formData.department) {
                 toast.error("Please complete your professional details.");
@@ -72,12 +105,53 @@ export const LecturerOnboardingPage = () => {
             setCurrentStep(STEP_PREFERENCES);
         } else if (currentStep === STEP_PREFERENCES) {
              // Final submission
-             if (!formData.verificationFile) {
+             if (!verificationFile) {
                 toast.error("Please upload a valid ID or verification document.");
                 return;
              }
-             toast.success("Profile setup complete! Welcome aboard.");
-             setTimeout(() => navigate("/lecturer/dashboard"), 1500);
+             
+             setIsSubmitting(true);
+             try {
+                if (!currentUser) throw new Error("No user logged in.");
+
+                // 1. Upload Verification Document
+                let verificationUrl = "";
+                if (verificationFile) {
+                    const storageRef = ref(storage, `verification_documents/${currentUser.uid}/${Date.now()}_${verificationFile.name}`);
+                    const snapshot = await uploadBytes(storageRef, verificationFile);
+                    verificationUrl = await getDownloadURL(snapshot.ref);
+                }
+
+                // 2. Update Firestore
+                const userRef = doc(db, "users", currentUser.uid);
+                
+                const dataToUpdate = {
+                    title: formData.title,
+                    rank: formData.rank,
+                    institution: formData.institution,
+                    department: formData.department,
+                    staffId: formData.staffId,
+                    expertise: formData.expertise,
+                    publicationsLink: formData.publicationsLink,
+                    acceptingStudents: formData.acceptingStudents,
+                    verificationUrl: verificationUrl,
+                    verificationStatus: 'pending', // Admins need to verify
+                    role: 'lecturer', // Enforce role
+                    onboardingCompleted: true,
+                    updatedAt: new Date()
+                };
+
+                await updateDoc(userRef, dataToUpdate);
+
+                toast.success("Profile setup complete! Welcome aboard.");
+                setTimeout(() => navigate("/lecturer/dashboard"), 1500);
+
+             } catch (error) {
+                console.error("Onboarding Error:", error);
+                toast.error(`Failed to save profile: ${error.message}`);
+             } finally {
+                setIsSubmitting(false);
+             }
         }
     };
 
@@ -224,17 +298,30 @@ export const LecturerOnboardingPage = () => {
 
                                     <div>
                                         <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Institution</label>
-                                        <select 
-                                            className="w-full px-4 py-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#0d1117] text-slate-900 dark:text-white focus:ring-2 focus:ring-primary/50 outline-none transition-all"
-                                            value={formData.institution}
-                                            onChange={(e) => updateData("institution", e.target.value)}
-                                        >
-                                            <option value="">Select Institution</option>
-                                            <option>University of Lagos</option>
-                                            <option>Obafemi Awolowo University</option>
-                                            <option>Covenant University</option>
-                                            <option>University of Ibadan</option>
-                                        </select>
+                                        <div className="relative group">
+                                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 material-symbols-outlined text-[20px] group-focus-within:text-primary transition-colors">school</span>
+                                            <select 
+                                                className="w-full pl-11 pr-4 py-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#0d1117] text-slate-900 dark:text-white focus:ring-2 focus:ring-primary/50 outline-none transition-all appearance-none cursor-pointer hover:border-primary/50"
+                                                value={formData.institution}
+                                                onChange={(e) => updateData("institution", e.target.value)}
+                                            >
+                                                <option value="">Select Institution</option>
+                                                {/* If current institution is custom/legacy, show it as an option */}
+                                                {formData.institution && !NIGERIAN_UNIVERSITIES.includes(formData.institution) && (
+                                                    <option value={formData.institution}>{formData.institution}</option>
+                                                )}
+                                                {NIGERIAN_UNIVERSITIES.map((uni) => (
+                                                    <option key={uni} value={uni}>
+                                                        {uni}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            <span className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                                                <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                                                    <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                                                </svg>
+                                            </span>
+                                        </div>
                                     </div>
 
                                     <div>
@@ -404,7 +491,7 @@ export const LecturerOnboardingPage = () => {
                         )}
 
                         {/* ---------------- STEP 3: PREFERENCES (Verification) ---------------- */}
-                        {currentStep === STEP_PREFERENCES && (
+                        {currentStep === 3 && (
                              <div className="max-w-2xl mx-auto animate-in fade-in slide-in-from-right-8 duration-500">
                                 <div className="text-center mb-10 text-slate-900 dark:text-white">
                                     <span className="text-primary font-semibold tracking-wide uppercase text-xs mb-2 block">Step 3 of 3</span>
@@ -419,12 +506,12 @@ export const LecturerOnboardingPage = () => {
                                         <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Upload ID Document (Image or PDF)</label>
                                         <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-slate-300 dark:border-slate-600 border-dashed rounded-lg hover:border-primary transition-colors bg-slate-50 dark:bg-slate-800/50">
                                             <div className="space-y-1 text-center">
-                                                {formData.verificationFile ? (
+                                                {verificationFile ? (
                                                     <div className="flex flex-col items-center">
                                                         <span className="material-symbols-outlined text-4xl text-green-500 mb-2">check_circle</span>
-                                                        <p className="text-sm text-slate-900 dark:text-white font-medium">{formData.verificationFile.name}</p>
+                                                        <p className="text-sm text-slate-900 dark:text-white font-medium">{verificationFile.name}</p>
                                                         <button 
-                                                            onClick={() => updateData("verificationFile", null)}
+                                                            onClick={() => setVerificationFile(null)}
                                                             className="text-xs text-red-500 hover:text-red-600 mt-2 font-medium"
                                                         >
                                                             Remove file
@@ -436,7 +523,7 @@ export const LecturerOnboardingPage = () => {
                                                         <div className="flex text-sm text-slate-600 dark:text-slate-400 justify-center">
                                                             <label htmlFor="file-upload" className="relative cursor-pointer rounded-md font-medium text-primary hover:text-primary-hover focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-primary">
                                                                 <span>Upload a file</span>
-                                                                <input id="file-upload" name="file-upload" type="file" className="sr-only" accept="image/*,.pdf" onChange={(e) => e.target.files && updateData("verificationFile", e.target.files[0])} />
+                                                                <input id="file-upload" name="file-upload" type="file" className="sr-only" accept="image/*,.pdf" onChange={(e) => e.target.files && setVerificationFile(e.target.files[0])} />
                                                             </label>
                                                             <p className="pl-1">or drag and drop</p>
                                                         </div>
@@ -486,17 +573,11 @@ export const LecturerOnboardingPage = () => {
 
                                     <button 
                                         onClick={handleNext}
-                                        className="w-full bg-primary hover:bg-primary-hover text-white font-medium py-3 px-6 rounded-lg shadow-lg shadow-primary/30 transition-all duration-200 flex items-center justify-center gap-2 mt-6"
+                                        disabled={isSubmitting}
+                                        className="w-full bg-primary hover:bg-primary-hover text-white font-medium py-3 px-6 rounded-lg shadow-lg shadow-primary/30 transition-all duration-200 flex items-center justify-center gap-2 mt-6 disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
-                                        Complete Setup
-                                        <span className="material-symbols-outlined text-sm">check_circle</span>
-                                    </button>
-
-                                    <button 
-                                            onClick={handleBack}
-                                            className="w-full text-slate-500 text-sm hover:text-slate-800 dark:hover:text-slate-200 transition-colors mt-4 text-center"
-                                        >
-                                            Go Back
+                                        {isSubmitting ? "Verifying..." : "Complete Setup"}
+                                        {!isSubmitting && <span className="material-symbols-outlined text-sm">check_circle</span>}
                                     </button>
                                 </div>
                              </div>

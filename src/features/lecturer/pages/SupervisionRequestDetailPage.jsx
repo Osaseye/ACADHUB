@@ -1,41 +1,124 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Sidebar } from '../../../components/layout/Sidebar';
 import { useSidebar } from '../../../hooks/useSidebar';
 import { toast } from 'sonner';
+import { db } from '../../../config/firebase';
+import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { useAuth } from '../../../context/AuthContext';
 
 export const SupervisionRequestDetailPage = () => {
     const { isSidebarCollapsed, toggleSidebar } = useSidebar();
     const { requestId } = useParams();
     const navigate = useNavigate();
+    const { currentUser } = useAuth();
 
-    // Mock Data - In a real app this would come from an API based on requestId
-    const request = {
-        id: requestId,
-        title: "Optimizing Neural Networks for Low-Power IoT Devices",
-        studentName: "Marcus Chen",
-        matricNo: "22/PG/MSC/012",
-        department: "Computer Science",
-        program: "MSc Computer Science",
-        submissionDate: "Oct 12, 2023",
-        status: "Pending Review",
-        abstract: `The proliferation of Internet of Things (IoT) devices has created a demand for deploying deep learning models on edge devices with limited computational resources. This paper proposes a novel structured pruning technique that reduces model size by 45% while maintaining 98% of the original accuracy. By leveraging a dynamic thresholding mechanism, we demonstrate significant energy savings on standard microcontroller units.
+    const [request, setRequest] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [isProcessing, setIsProcessing] = useState(false);
 
-Deep Neural Networks (DNNs) have achieved state-of-the-art performance in various tasks. However, their high computational cost and memory footprint hinder their deployment on resource-constrained devices. Existing solutions often focus on quantization or unstructured pruning, which can be difficult to accelerate on general-purpose hardware. Our approach targets structured pruning to ensure hardware compatibility.
+    useEffect(() => {
+        const fetchRequest = async () => {
+            if (!requestId) return;
+            try {
+                const docRef = doc(db, 'supervision_requests', requestId);
+                const docSnap = await getDoc(docRef);
+                if (docSnap.exists()) {
+                    setRequest({ id: docSnap.id, ...docSnap.data() });
+                } else {
+                    toast.error("Request not found");
+                }
+            } catch (error) {
+                console.error("Error fetching request:", error);
+                toast.error("Failed to load request");
+            } finally {
+                setLoading(false);
+            }
+        };
 
-Several studies have addressed the challenge of efficient deep learning. Han et al. [1] introduced weight pruning, reducing the number of connections. However, irregular sparsity patterns lead to inefficient memory access. To mitigate this, Wen et al. [2] proposed Structured Sparsity Learning (SSL).`,
-        fileName: "thesis_proposal_v1.pdf",
-        fileSize: "2.4 MB"
+        fetchRequest();
+    }, [requestId]);
+
+    if (loading) {
+        return (
+            <div className="flex h-screen bg-gray-50 font-sans text-slate-800 overflow-hidden">
+                 <Sidebar 
+                    role="lecturer" 
+                    isCollapsed={isSidebarCollapsed}
+                    toggleSidebar={toggleSidebar}
+                />
+                <div className="flex-1 flex items-center justify-center">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+                </div>
+            </div>
+        );
+    }
+
+    if (!request) {
+        return (
+            <div className="flex h-screen bg-gray-50 font-sans text-slate-800 overflow-hidden">
+                 <Sidebar 
+                    role="lecturer" 
+                    isCollapsed={isSidebarCollapsed}
+                    toggleSidebar={toggleSidebar}
+                />
+                <div className="flex-1 flex items-center justify-center">
+                    <div className="text-center">
+                        <h2 className="text-xl font-bold text-gray-700">Request Not Found</h2>
+                        <Link to="/lecturer/supervision" className="text-primary hover:underline mt-2 inline-block">Back to Supervision</Link>
+                    </div>
+                </div>
+            </div>
+        )
+    }
+
+    const handleAccept = async () => {
+        if (!window.confirm(`Are you sure you want to accept supervision for ${request.studentName}?`)) return;
+        
+        setIsProcessing(true);
+        try {
+            await updateDoc(doc(db, 'supervision_requests', requestId), {
+                status: 'approved',
+                reviewedAt: serverTimestamp(),
+                // Initialize progress tracking fields if they don't exist
+                progress: 0,
+                lastMeet: null
+            });
+            toast.success(`Supervision request for ${request.studentName} accepted.`);
+            navigate('/lecturer/supervision');
+        } catch (error) {
+            console.error("Error accepting request:", error);
+            toast.error("Failed to accept request.");
+        } finally {
+            setIsProcessing(false);
+        }
     };
 
-    const handleAccept = () => {
-        toast.success(`Supervision request for ${request.studentName} accepted.`);
-        navigate('/lecturer/supervision');
+    const handleDecline = async () => {
+        if (!window.confirm(`Are you sure you want to decline this request?`)) return;
+
+        setIsProcessing(true);
+        try {
+            await updateDoc(doc(db, 'supervision_requests', requestId), {
+                status: 'rejected',
+                reviewedAt: serverTimestamp()
+            });
+            toast.info(`Supervision request for ${request.studentName} declined.`);
+            navigate('/lecturer/supervision');
+        } catch (error) {
+            console.error("Error declining request:", error);
+            toast.error("Failed to decline request.");
+        } finally {
+            setIsProcessing(false);
+        }
     };
 
-    const handleDecline = () => {
-        toast.info(`Supervision request for ${request.studentName} declined.`);
-        navigate('/lecturer/supervision');
+    // Format date helper
+    const formatDate = (timestamp) => {
+        if (!timestamp) return 'Unknown';
+        // Handle Firestore Timestamp or Date object or string
+        if (timestamp.toDate) return timestamp.toDate().toLocaleDateString();
+        return new Date(timestamp).toLocaleDateString();
     };
 
     return (
@@ -66,47 +149,57 @@ Several studies have addressed the challenge of efficient deep learning. Han et 
                                 </li>
                                 <li><span className="text-slate-300">/</span></li>
                                 <li>
-                                    <span className="text-primary font-medium text-sm">Request #{requestId}</span>
+                                    <span className="text-primary font-medium text-sm">Request #{requestId.substring(0,6)}...</span>
                                 </li>
                             </ol>
                         </nav>
                     </div>
                     
-                    <div className="flex items-center gap-3">
-                         {/* Action Buttons */}
-                        <button 
-                            onClick={handleDecline}
-                            className="px-4 py-2 text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
-                        >
-                            <span className="material-symbols-outlined text-lg">close</span>
-                            Decline
-                        </button>
-                        <button 
-                            onClick={handleAccept}
-                            className="px-4 py-2 text-white bg-green-600 hover:bg-green-700 rounded-lg text-sm font-medium shadow-sm transition-colors flex items-center gap-2"
-                        >
-                            <span className="material-symbols-outlined text-lg">check</span>
-                            Accept Request
-                        </button>
-                    </div>
+                    {request.status === 'pending' && (
+                        <div className="flex items-center gap-3">
+                             {/* Action Buttons */}
+                            <button 
+                                onClick={handleDecline}
+                                disabled={isProcessing}
+                                className="px-4 py-2 text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 disabled:opacity-50"
+                            >
+                                <span className="material-symbols-outlined text-lg">close</span>
+                                Decline
+                            </button>
+                            <button 
+                                onClick={handleAccept}
+                                disabled={isProcessing}
+                                className="px-4 py-2 text-white bg-green-600 hover:bg-green-700 rounded-lg text-sm font-medium shadow-sm transition-colors flex items-center gap-2 disabled:opacity-50"
+                            >
+                                <span className="material-symbols-outlined text-lg">check</span>
+                                Accept Request
+                            </button>
+                        </div>
+                    )}
                 </header>
 
                 <main className="flex-grow flex overflow-hidden">
                     {/* Main Content Area (Left) */}
                     <section className="flex-grow bg-slate-50 relative flex flex-col w-2/3 border-r border-slate-200 overflow-y-auto custom-scrollbar [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']">
                         <div className="p-8 max-w-4xl mx-auto w-full">
-                            
-                            {/* Request Header */}
-                            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-8 mb-6">
+                             {/* Request Header */}
+                             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-8 mb-6">
                                 <div className="flex flex-col gap-4">
                                     <div className="flex items-start justify-between">
                                         <div>
-                                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-yellow-100 text-yellow-800 border border-yellow-200 text-xs font-semibold mb-3">
-                                                <span className="w-1.5 h-1.5 rounded-full bg-yellow-500"></span>
-                                                {request.status}
+                                            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold mb-3 ${
+                                                request.status === 'pending' ? 'bg-yellow-100 text-yellow-800 border-yellow-200' :
+                                                request.status === 'approved' ? 'bg-green-100 text-green-800 border-green-200' :
+                                                'bg-red-100 text-red-800 border-red-200'
+                                            }`}>
+                                                <span className={`w-1.5 h-1.5 rounded-full ${
+                                                    request.status === 'pending' ? 'bg-yellow-500' :
+                                                    request.status === 'approved' ? 'bg-green-500' : 'bg-red-500'
+                                                }`}></span>
+                                                {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
                                             </span>
                                             <h1 className="text-2xl font-bold text-slate-900 leading-tight mb-2">
-                                                {request.title}
+                                                {request.topic || "Untitled Topic"}
                                             </h1>
                                         </div>
                                     </div>
@@ -114,22 +207,22 @@ Several studies have addressed the challenge of efficient deep learning. Han et 
                                     <div className="flex items-center gap-6 text-sm text-slate-500 border-t border-slate-100 pt-4 mt-2">
                                         <div className="flex items-center gap-2">
                                             <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-bold border border-slate-200">
-                                                {request.studentName.charAt(0)}
+                                                {request.studentName ? request.studentName.charAt(0) : '?'}
                                             </div>
                                             <div>
                                                 <p className="font-semibold text-slate-700">{request.studentName}</p>
-                                                <p className="text-xs">{request.matricNo}</p>
+                                                <p className="text-xs">{request.matricNo || "No Matric No"}</p>
                                             </div>
                                         </div>
                                         <div className="h-8 w-px bg-slate-200"></div>
                                         <div className="flex flex-col">
                                             <span className="text-xs text-slate-400 uppercase tracking-wide">Program</span>
-                                            <span className="font-medium text-slate-700">{request.program}</span>
+                                            <span className="font-medium text-slate-700">{request.degree || "Unknown Program"}</span>
                                         </div>
                                         <div className="h-8 w-px bg-slate-200"></div>
                                          <div className="flex flex-col">
                                             <span className="text-xs text-slate-400 uppercase tracking-wide">Submitted</span>
-                                            <span className="font-medium text-slate-700">{request.submissionDate}</span>
+                                            <span className="font-medium text-slate-700">{formatDate(request.createdAt)}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -142,34 +235,40 @@ Several studies have addressed the challenge of efficient deep learning. Han et 
                                     Proposal Abstract
                                 </h2>
                                 <div className="prose prose-slate max-w-none text-slate-600 leading-relaxed text-sm">
-                                    {request.abstract.split('\n\n').map((paragraph, idx) => (
-                                        <p key={idx} className="mb-4 last:mb-0">{paragraph}</p>
-                                    ))}
+                                    {request.abstract ? (
+                                        request.abstract.split('\n\n').map((paragraph, idx) => (
+                                            <p key={idx} className="mb-4 last:mb-0">{paragraph}</p>
+                                        ))
+                                    ) : (
+                                        <p className="italic text-gray-400">No abstract provided.</p>
+                                    )}
                                 </div>
                             </div>
 
                             {/* Attachments Section */}
-                            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-8">
-                                <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-                                    <span className="material-symbols-outlined text-primary">attachment</span>
-                                    Attachments
-                                </h2>
-                                <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-200 rounded-lg group hover:border-primary/30 transition-colors">
-                                    <div className="flex items-center gap-4">
-                                        <div className="w-12 h-12 rounded-lg bg-red-50 flex items-center justify-center text-red-500">
-                                            <span className="material-symbols-outlined text-3xl">picture_as_pdf</span>
+                           {request.fileUrl && (
+                                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-8">
+                                    <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                                        <span className="material-symbols-outlined text-primary">attachment</span>
+                                        Attachments
+                                    </h2>
+                                    <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-200 rounded-lg group hover:border-primary/30 transition-colors">
+                                        <div className="flex items-center gap-4">
+                                            <div className="w-12 h-12 rounded-lg bg-red-50 flex items-center justify-center text-red-500">
+                                                <span className="material-symbols-outlined text-3xl">picture_as_pdf</span>
+                                            </div>
+                                            <div>
+                                                <p className="font-medium text-slate-800 group-hover:text-primary transition-colors">{request.fileName || "Document.pdf"}</p>
+                                                <p className="text-xs text-slate-500">{request.fileSize || "Unknown size"}</p>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <p className="font-medium text-slate-800 group-hover:text-primary transition-colors">{request.fileName}</p>
-                                            <p className="text-xs text-slate-500">{request.fileSize} • Uploaded on {request.submissionDate}</p>
-                                        </div>
+                                        <a href={request.fileUrl} target="_blank" rel="noopener noreferrer" className="px-4 py-2 bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:text-primary hover:border-primary/30 rounded-lg text-sm font-medium transition-all shadow-sm flex items-center gap-2">
+                                            <span className="material-symbols-outlined">download</span>
+                                            Download
+                                        </a>
                                     </div>
-                                    <button className="px-4 py-2 bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:text-primary hover:border-primary/30 rounded-lg text-sm font-medium transition-all shadow-sm flex items-center gap-2">
-                                        <span className="material-symbols-outlined">download</span>
-                                        Download
-                                    </button>
                                 </div>
-                            </div>
+                           )}
 
                         </div>
                     </section>

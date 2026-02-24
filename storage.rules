@@ -1,0 +1,49 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+    
+    // --- Profile Images ---
+    match /profile_pictures/{userId} {
+      // Public read for profile pictures
+      allow read: if true; 
+      // User can upload their own profile pic      ture
+      allow write: if isAuthenticated() && isOwner(userId) 
+                   && request.resource.size < 5 * 1024 * 1024 // Max 5MB
+                   && request.resource.contentType.matches('image/.*');
+    }
+
+    // --- Project Files (PDFs/ZIPs) ---
+    match /project_files/{userId}/{fileName} {
+      // Authenticated users can download project files
+      allow read: if isAuthenticated();
+      // Students upload their own project files
+      allow write: if isAuthenticated() && isOwner(userId)
+                   && request.resource.size < 50 * 1024 * 1024; // Max 50MB
+    }
+
+    // --- Verification Documents ---
+    match /verification_documents/{userId}/{fileName} {
+      // Allow admins AND the owner to read verification docs
+      // This is necessary so the uploader can get the Download URL immediately after upload
+      allow read: if isAuthenticated() && (isOwner(userId) || request.auth.token.role == 'admin'); 
+
+      // Lecturers upload their own proofs
+      allow write: if isAuthenticated() && isOwner(userId)
+                   && request.resource.size < 10 * 1024 * 1024; // Max 10MB
+    }
+    
+    // Default deny
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

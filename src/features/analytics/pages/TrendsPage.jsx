@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Sidebar } from '../../../components/layout/Sidebar';
 import { useSidebar } from '../../../hooks/useSidebar';
-import { Line, Doughnut } from 'react-chartjs-2';
+import { db } from '../../../config/firebase';
+import { collection, getDocs, query, orderBy } from 'firebase/firestore';
+import { Line, Doughnut, Bar } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -12,8 +14,10 @@ import {
   Tooltip,
   Legend,
   ArcElement,
+  BarElement,
   Filler
 } from 'chart.js';
+import { format, subMonths, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 
 ChartJS.register(
   CategoryScale,
@@ -24,89 +28,165 @@ ChartJS.register(
   Tooltip,
   Legend,
   ArcElement,
+  BarElement,
   Filler
 );
 
 export const TrendsPage = () => {
     const { isSidebarCollapsed, toggleSidebar } = useSidebar();
     const chartRef = useRef(null);
-    // Initial data with solid colors as fallback
-    const [chartData, setChartData] = useState({
-        labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
-        datasets: [
-            {
-                label: 'Computer Science',
-                data: [65, 70, 75, 72, 80, 85, 95, 100, 110, 105, 115, 125],
-                borderColor: '#0ea5e9',
-                backgroundColor: 'rgba(14, 165, 233, 0.5)',
-                borderWidth: 2,
-                tension: 0.4,
-                fill: true,
-                pointRadius: 0,
-                pointHoverRadius: 6
-            },
-            {
-                label: 'Engineering',
-                data: [40, 45, 42, 50, 55, 52, 60, 65, 62, 70, 75, 80],
-                borderColor: '#0f2e63',
-                backgroundColor: 'rgba(15, 46, 99, 0.5)',
-                borderWidth: 2,
-                tension: 0.4,
-                fill: true,
-                pointRadius: 0,
-                pointHoverRadius: 6
-            },
-            {
-                label: 'Social Sciences',
-                data: [20, 22, 25, 24, 28, 30, 28, 32, 35, 38, 40, 42],
-                borderColor: '#cbd5e1',
-                borderDash: [5, 5],
-                borderWidth: 2,
-                tension: 0.4,
-                fill: false,
-                pointRadius: 0,
-                pointHoverRadius: 4
-            }
-        ]
+    const [loading, setLoading] = useState(true);
+    const [projects, setProjects] = useState([]);
+    
+    // Chart Data States
+    const [lineData, setLineData] = useState({ labels: [], datasets: [] });
+    const [doughnutData, setDoughnutData] = useState({ labels: [], datasets: [] });
+    const [barData, setBarData] = useState({ labels: [], datasets: [] });
+
+    // KPIs
+    const [stats, setStats] = useState({
+        topTopic: '-',
+        growthRate: '0%',
+        activeDept: '-',
+        totalProjects: 0
     });
 
     useEffect(() => {
-        const chart = chartRef.current;
-        
-        if (chart && chart.ctx) {
-            const ctx = chart.ctx;
-            const gradient1 = ctx.createLinearGradient(0, 0, 0, 400);
-            gradient1.addColorStop(0, 'rgba(14, 165, 233, 0.5)');
-            gradient1.addColorStop(1, 'rgba(14, 165, 233, 0.0)');
+        const fetchData = async () => {
+            try {
+                const q = query(collection(db, 'projects'), orderBy('createdAt', 'desc'));
+                const snapshot = await getDocs(q);
+                const data = snapshot.docs.map(doc => {
+                    const d = doc.data();
+                    // Handle Firestore Timestamp
+                    const createdAt = d.createdAt?.toDate ? d.createdAt.toDate() : new Date(d.createdAt || Date.now());
+                    return { ...d, id: doc.id, createdAt };
+                });
+                
+                setProjects(data);
+                processAnalytics(data);
+            } catch (error) {
+                console.error("Error fetching analytics data:", error);
+            } finally {
+                setLoading(false);
+            }
+        };
 
-            const gradient2 = ctx.createLinearGradient(0, 0, 0, 400);
-            gradient2.addColorStop(0, 'rgba(15, 46, 99, 0.5)');
-            gradient2.addColorStop(1, 'rgba(15, 46, 99, 0.0)');
-
-            // Only update if gradients are successfully created
-            setChartData(prev => ({
-                ...prev,
-                datasets: prev.datasets.map((dataset, i) => {
-                    if (i === 0) return { ...dataset, backgroundColor: gradient1 };
-                    if (i === 1) return { ...dataset, backgroundColor: gradient2 };
-                    return dataset;
-                })
-            }));
-        }
+        fetchData();
     }, []);
 
-    const doughnutData = {
-        labels: ['BSc Projects', 'MSc Theses', 'PhD Dissertations'],
-        datasets: [{
-            data: [55, 30, 15],
-            backgroundColor: [
-                '#0ea5e9', // Primary
-                '#0f2e63', // Secondary
-                '#94a3b8'  // Slate-400
-            ],
-            borderWidth: 0,
-            hoverOffset: 4
-        }]
+    const processAnalytics = (data) => {
+        // 1. Degree Distribution (Doughnut)
+        const degrees = {};
+        data.forEach(p => {
+            const type = p.degree || p.type || 'Unknown'; // Normalize 'BSc Project' -> 'BSc' if needed
+            // Simple normalization
+            let key = type;
+            if (type.includes('BSc')) key = 'BSc';
+            if (type.includes('MSc') || type.includes('Master')) key = 'MSc';
+            if (type.includes('PhD') || type.includes('Doctor')) key = 'PhD';
+            
+            degrees[key] = (degrees[key] || 0) + 1;
+        });
+
+        setDoughnutData({
+            labels: Object.keys(degrees),
+            datasets: [{
+                data: Object.values(degrees),
+                backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#6366f1'],
+                borderWidth: 0,
+                hoverOffset: 4
+            }]
+        });
+
+        // 2. Trend Over Time (Line Chart - Last 6 Months)
+        const last6Months = Array.from({ length: 6 }, (_, i) => {
+            const d = subMonths(new Date(), 5 - i);
+            return {
+                label: format(d, 'MMM'),
+                monthStart: startOfMonth(d),
+                monthEnd: endOfMonth(d),
+                count: 0
+            };
+        });
+
+        data.forEach(p => {
+            const bucket = last6Months.find(m => 
+                isWithinInterval(p.createdAt, { start: m.monthStart, end: m.monthEnd })
+            );
+            if (bucket) bucket.count++;
+        });
+
+        setLineData({
+            labels: last6Months.map(m => m.label),
+            datasets: [{
+                label: 'New Uploads',
+                data: last6Months.map(m => m.count),
+                borderColor: '#3b82f6',
+                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                tension: 0.4,
+                fill: true,
+                pointBackgroundColor: '#fff',
+                pointBorderColor: '#3b82f6',
+                pointRadius: 4
+            }]
+        });
+
+        // 3. Department Activity (Bar/KPI)
+        const depts = {};
+        data.forEach(p => {
+            const dept = p.department || 'Unassigned';
+            depts[dept] = (depts[dept] || 0) + 1;
+        });
+        
+        // Find top dept
+        let topDept = '-';
+        let maxCount = 0;
+        Object.entries(depts).forEach(([dept, count]) => {
+            if (count > maxCount) {
+                maxCount = count;
+                topDept = dept;
+            }
+        });
+
+        setBarData({
+            labels: Object.keys(depts).slice(0, 5), // Top 5
+            datasets: [{
+                label: 'Projects',
+                data: Object.values(depts).slice(0, 5),
+                backgroundColor: '#6366f1',
+                borderRadius: 4
+            }]
+        });
+
+        // 4. Growth Rate Calculation
+        const currentMonthCount = last6Months[5].count;
+        const prevMonthCount = last6Months[4].count;
+        let growth = 0;
+        if (prevMonthCount === 0) {
+            growth = currentMonthCount > 0 ? 100 : 0;
+        } else {
+            growth = ((currentMonthCount - prevMonthCount) / prevMonthCount) * 100;
+        }
+
+        // 5. Top Topic (Simple word frequency in titles)
+        const words = {};
+        data.forEach(p => {
+            const titleWords = (p.title || '').toLowerCase().split(/\s+/);
+            titleWords.forEach(w => {
+                if (w.length > 4) { // Filter small words
+                    words[w] = (words[w] || 0) + 1;
+                }
+            });
+        });
+        const topWord = Object.entries(words).sort((a, b) => b[1] - a[1])[0];
+
+        setStats({
+            topTopic: topWord ? topWord[0] : 'N/A',
+            growthRate: `${growth.toFixed(0)}%`,
+            activeDept: topDept,
+            totalProjects: data.length
+        });
     };
 
     const doughnutOptions = {
@@ -219,9 +299,9 @@ export const TrendsPage = () => {
                         <div className="bg-surface-light dark:bg-surface-dark p-6 rounded-xl border border-border-light dark:border-border-dark shadow-sm flex items-start justify-between">
                             <div>
                                 <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Top Trending Topic</p>
-                                <h3 className="text-2xl font-bold text-gray-900 dark:text-white mt-2">Generative AI</h3>
-                                <p className="text-sm text-green-600 dark:text-green-400 mt-1 flex items-center font-medium">
-                                    <span className="material-symbols-outlined text-base mr-1">trending_up</span> +34% vs last month
+                                <h3 className="text-2xl font-bold text-gray-900 dark:text-white mt-2 capitalize">{stats.topTopic}</h3>
+                                <p className="text-sm text-text-muted-light dark:text-text-muted-dark mt-1 flex items-center font-medium">
+                                    Derived from {stats.totalProjects} projects
                                 </p>
                             </div>
                             <div className="p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg text-primary">
@@ -231,9 +311,9 @@ export const TrendsPage = () => {
                         <div className="bg-surface-light dark:bg-surface-dark p-6 rounded-xl border border-border-light dark:border-border-dark shadow-sm flex items-start justify-between">
                             <div>
                                 <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Repository Growth Rate</p>
-                                <h3 className="text-2xl font-bold text-gray-900 dark:text-white mt-2">12.5%</h3>
-                                <p className="text-sm text-green-600 dark:text-green-400 mt-1 flex items-center font-medium">
-                                    <span className="material-symbols-outlined text-base mr-1">arrow_upward</span> +2.1% points
+                                <h3 className="text-2xl font-bold text-gray-900 dark:text-white mt-2">{stats.growthRate}</h3>
+                                <p className="text-sm text-text-muted-light dark:text-text-muted-dark mt-1 flex items-center font-medium">
+                                    Month-over-month
                                 </p>
                             </div>
                             <div className="p-3 bg-teal-50 dark:bg-teal-900/30 rounded-lg text-teal-600 dark:text-teal-400">
@@ -243,8 +323,8 @@ export const TrendsPage = () => {
                         <div className="bg-surface-light dark:bg-surface-dark p-6 rounded-xl border border-border-light dark:border-border-dark shadow-sm flex items-start justify-between">
                             <div>
                                 <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Most Active Department</p>
-                                <h3 className="text-2xl font-bold text-gray-900 dark:text-white mt-2">Computer Science</h3>
-                                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">452 new projects</p>
+                                <h3 className="text-xl font-bold text-gray-900 dark:text-white mt-2">{stats.activeDept}</h3>
+                                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Leading contributions</p>
                             </div>
                             <div className="p-3 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg text-indigo-600 dark:text-indigo-400">
                                 <span className="material-symbols-outlined text-2xl">groups</span>
@@ -256,18 +336,18 @@ export const TrendsPage = () => {
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                         <div className="lg:col-span-2 bg-surface-light dark:bg-surface-dark p-6 rounded-xl border border-border-light dark:border-border-dark shadow-sm">
                             <div className="flex items-center justify-between mb-6">
-                                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Topic Popularity Over Time</h3>
+                                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Upload Activity (Last 6 Months)</h3>
                                 <button className="text-gray-400 hover:text-primary dark:hover:text-primary">
                                     <span className="material-symbols-outlined">more_horiz</span>
                                 </button>
                             </div>
                             <div className="relative h-72 w-full">
-                                <Line ref={chartRef} data={chartData} options={lineOptions} />
+                                <Line ref={chartRef} data={lineData} options={lineOptions} />
                             </div>
                         </div>
                         <div className="bg-surface-light dark:bg-surface-dark p-6 rounded-xl border border-border-light dark:border-border-dark shadow-sm flex flex-col">
                             <div className="flex items-center justify-between mb-6">
-                                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Degree Level Distribution</h3>
+                                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Projects by Degree</h3>
                                 <button className="text-gray-400 hover:text-primary dark:hover:text-primary">
                                     <span className="material-symbols-outlined">more_horiz</span>
                                 </button>
@@ -277,33 +357,16 @@ export const TrendsPage = () => {
                             </div>
                         </div>
                         
-                        {/* Heatmap Section */}
-                        <div className="lg:col-span-3 bg-surface-light dark:bg-surface-dark p-6 rounded-xl border border-border-light dark:border-border-dark shadow-sm">
+                        {/* New Bar Chart (Replacing Heatmap for now as it maps better to Departments) */}
+                         <div className="lg:col-span-3 bg-surface-light dark:bg-surface-dark p-6 rounded-xl border border-border-light dark:border-border-dark shadow-sm">
                             <div className="flex items-center justify-between mb-4">
-                                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Keyword Frequency Heatmap</h3>
+                                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Departmental Contribution (Top 5)</h3>
                                 <div className="flex items-center gap-2">
-                                    <span className="text-xs text-gray-500 dark:text-gray-400">Low Freq</span>
-                                    <div className="w-16 h-2 rounded-full bg-gradient-to-r from-teal-100 to-secondary"></div>
-                                    <span className="text-xs text-gray-500 dark:text-gray-400">High Freq</span>
+                                     {/* Legend placeholder if needed */}
                                 </div>
                             </div>
-                            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2">
-                                <div className="bg-secondary text-white p-3 rounded-md text-center text-sm font-medium opacity-100 shadow-sm">Machine Learning</div>
-                                <div className="bg-secondary text-white p-3 rounded-md text-center text-sm font-medium opacity-90 shadow-sm">Deep Learning</div>
-                                <div className="bg-secondary text-white p-3 rounded-md text-center text-sm font-medium opacity-80 shadow-sm">NLP</div>
-                                <div className="bg-secondary text-white p-3 rounded-md text-center text-sm font-medium opacity-75 shadow-sm">Computer Vision</div>
-                                <div className="bg-primary text-white p-3 rounded-md text-center text-sm font-medium opacity-90 shadow-sm">Robotics</div>
-                                <div className="bg-primary text-white p-3 rounded-md text-center text-sm font-medium opacity-80 shadow-sm">Data Mining</div>
-                                <div className="bg-primary text-white p-3 rounded-md text-center text-sm font-medium opacity-70 shadow-sm">Blockchain</div>
-                                <div className="bg-primary text-white p-3 rounded-md text-center text-sm font-medium opacity-60 shadow-sm">IoT</div>
-                                <div className="bg-secondary text-white p-3 rounded-md text-center text-sm font-medium opacity-60 shadow-sm">Cybersecurity</div>
-                                <div className="bg-secondary text-white p-3 rounded-md text-center text-sm font-medium opacity-50 shadow-sm">Cloud Computing</div>
-                                <div className="bg-primary text-white p-3 rounded-md text-center text-sm font-medium opacity-50 shadow-sm">Big Data</div>
-                                <div className="bg-primary text-white p-3 rounded-md text-center text-sm font-medium opacity-40 shadow-sm">Bioinformatics</div>
-                                <div className="bg-primary text-white p-3 rounded-md text-center text-sm font-medium opacity-30 shadow-sm">Quantum Comp.</div>
-                                <div className="bg-teal-200 text-teal-900 p-3 rounded-md text-center text-sm font-medium shadow-sm">AR/VR</div>
-                                <div className="bg-teal-100 text-teal-800 p-3 rounded-md text-center text-sm font-medium shadow-sm">Ethics in AI</div>
-                                <div className="bg-teal-50 text-teal-700 p-3 rounded-md text-center text-sm font-medium shadow-sm">Green Tech</div>
+                            <div className="relative w-full h-64">
+                                <Bar data={barData} options={{ maintainAspectRatio: false }} />
                             </div>
                         </div>
 
@@ -317,25 +380,21 @@ export const TrendsPage = () => {
                                             <span className="material-symbols-outlined text-white text-xl">psychology</span>
                                         </div>
                                     </div>
-                                    <div className="space-y-2">
+                                    <div className="space-y-2 w-full">
                                         <div className="flex items-center justify-between">
                                             <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
                                                 AI-Generated Trend Report
                                                 <span className="bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide border border-blue-200 dark:border-blue-800">Beta</span>
                                             </h3>
-                                            <span className="text-xs text-gray-400">Generated just now</span>
                                         </div>
                                         <div className="prose prose-sm dark:prose-invert max-w-none text-gray-600 dark:text-gray-300">
-                                            <p>
-                                                <strong className="text-secondary dark:text-primary">Summary:</strong> Analysis of the current quarter indicates a significant surge in <strong>Generative AI</strong> research, primarily driven by PhD candidates in the Computer Science department. While traditional fields like Data Mining are stabilizing, there is a notable <span className="text-green-600 dark:text-green-400 font-medium">12% uptick</span> in interdisciplinary projects combining <strong>NLP</strong> and <strong>Bioinformatics</strong>.
-                                            </p>
-                                            <p className="mt-2">
-                                                <strong className="text-secondary dark:text-primary">Recommendation:</strong> Departments should consider increasing resource allocation for GPU clusters to support the growing demand for deep learning model training observed in MSc thesis proposals.
+                                            <p className="italic text-text-muted-light dark:text-text-muted-dark">
+                                                Report generation requires active data.
                                             </p>
                                         </div>
                                         <div className="pt-2">
-                                            <button className="text-xs font-medium text-primary hover:text-secondary dark:hover:text-sky-300 flex items-center gap-1 transition-colors">
-                                                View full detailed report <span className="material-symbols-outlined text-xs">arrow_forward</span>
+                                            <button className="text-xs font-medium text-text-muted-light cursor-not-allowed flex items-center gap-1 transition-colors" disabled>
+                                                Generate report <span className="material-symbols-outlined text-xs">arrow_forward</span>
                                             </button>
                                         </div>
                                     </div>
