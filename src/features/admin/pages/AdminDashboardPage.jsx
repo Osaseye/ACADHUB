@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { Sidebar } from '../../../components/layout/Sidebar';
 import { useSidebar } from '../../../hooks/useSidebar';
+import { useAuth } from '../../../context/AuthContext';
 import { Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -12,9 +13,12 @@ import {
   Tooltip,
   Filler,
   Legend,
-} from 'chart.js';
+} from 'chart.js';  
+import { db } from '../../../config/firebase';
+import { collection, query, where, getDocs, limit, orderBy } from 'firebase/firestore'; 
+import { toast } from 'sonner';
+import { format, subMonths, startOfMonth, parseISO, compareAsc } from 'date-fns';
 
-// Register ChartJS components
 ChartJS.register(
   CategoryScale,
   LinearScale,
@@ -28,12 +32,117 @@ ChartJS.register(
 
 export const AdminDashboardPage = () => {
     const { isSidebarCollapsed, toggleSidebar } = useSidebar();
-
-    // Chart Configuration
-    const chartData = {
+    const { currentUser, loading: authLoading } = useAuth();
+    const [stats, setStats] = useState({
+        totalUsers: 0,
+        totalProjects: 0,
+        pendingVerifications: 0,
+        activeResearchers: 0
+    });
+    const [recentUsers, setRecentUsers] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [chartData, setChartData] = useState({
         labels: [],
         datasets: []
-    };
+    });
+
+    useEffect(() => {
+        const fetchDashboardData = async () => {
+            if (authLoading) return;
+            if (!currentUser) {
+                setLoading(false);
+                return;
+            }
+
+            try {
+                console.log("Fetching dashboard data...");
+                // 1. Fetch Users
+                const usersRef = collection(db, "users");
+                // Fetch all users for accurate stats in small-scale app
+                const usersSnapshot = await getDocs(usersRef);
+                const users = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                console.log("Fetched Users:", users.length, users);
+                
+                // 2. Fetch Projects
+                const projectsRef = collection(db, "projects");
+                const projectsSnapshot = await getDocs(projectsRef);
+                const projects = projectsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                console.log("Fetched Projects:", projects.length, projects);
+
+                // 3. Calculate Stats
+                const totalUsers = users.length;
+                const totalProjects = projects.length;
+                const pendingVerifications = users.filter(u => u.verificationStatus === 'pending' && u.role === 'lecturer').length;
+                const activeResearchers = users.filter(u => u.role === 'lecturer').length; 
+
+                setStats({
+                    totalUsers,
+                    totalProjects,
+                    pendingVerifications,
+                    activeResearchers
+                });
+
+                // Helper to safely parse dates
+                const getDate = (item) => {
+                    if (!item?.createdAt) return new Date(0);
+                    if (item.createdAt.seconds) return new Date(item.createdAt.seconds * 1000);
+                    if (item.createdAt instanceof Date) return item.createdAt;
+                    if (typeof item.createdAt === 'string') return new Date(item.createdAt);
+                    if (typeof item.createdAt === 'number') return new Date(item.createdAt);
+                    return new Date(0);
+                };
+
+                // 4. Set Recent Users (Top 5)
+                const sortedUsers = [...users].sort((a, b) => {
+                     return getDate(b) - getDate(a); 
+                }).slice(0, 5);
+                setRecentUsers(sortedUsers);
+
+                // 5. Generate Chart Data (Last 6 Months User Growth)
+                const last6Months = Array.from({ length: 6 }, (_, i) => {
+                    const d = subMonths(new Date(), 5 - i);
+                    return {
+                        label: format(d, 'MMM'),
+                        start: startOfMonth(d),
+                        count: 0
+                    };
+                });
+
+                users.forEach(user => {
+                    const date = getDate(user);
+                    if (date.getTime() > 0) { // Valid date
+                        const monthLabel = format(date, 'MMM');
+                        const bucket = last6Months.find(m => m.label === monthLabel);
+                        if (bucket) {
+                            bucket.count++;
+                        }
+                    }
+                });
+
+                setChartData({
+                    labels: last6Months.map(m => m.label),
+                    datasets: [
+                        {
+                            label: 'New Users',
+                            data: last6Months.map(m => m.count),
+                            fill: true,
+                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                            borderColor: '#3b82f6',
+                            tension: 0.4
+                        }
+                    ]
+                });
+
+            } catch (error) {
+                console.error("Error fetching dashboard data:", error);
+                toast.error("Failed to load dashboard data: " + error.message);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchDashboardData();
+    }, [currentUser, authLoading]);
 
     const chartOptions = {
         responsive: true,
@@ -65,7 +174,8 @@ export const AdminDashboardPage = () => {
                     color: '#374151', 
                     drawBorder: false,
                 },
-                ticks: { color: '#9CA3AF' }
+                ticks: { color: '#9CA3AF' },
+                precision: 0 
             },
             x: {
                 grid: { display: false },
@@ -78,6 +188,10 @@ export const AdminDashboardPage = () => {
             intersect: false
         }
     };
+
+    if (authLoading) {
+         return <div className="flex h-screen items-center justify-center bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark">Loading...</div>;
+    }
 
     return (
         <div className="flex h-screen overflow-hidden bg-[#F3F4F6] dark:bg-[#0D1117] text-gray-900 dark:text-gray-300 font-sans transition-colors duration-200">
@@ -93,153 +207,117 @@ export const AdminDashboardPage = () => {
                     {/* Header */}
                     <div className="flex justify-between items-center mb-6">
                         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">System Dashboard</h1>
+                        
+                        <div className="text-sm text-gray-500">
+                             Last updated: {new Date().toLocaleTimeString()}
+                        </div>
                     </div>
 
                     {/* Stats Grid */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                        {/* CPU Usage */}
-                        <div className="bg-white dark:bg-[#161B22] border border-gray-200 dark:border-[#30363D] rounded-lg p-5 shadow-sm">
-                            <div className="flex items-center justify-between mb-2">
-                                <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">CPU Usage</h3>
-                                <span className="material-symbols-outlined text-green-500 text-[20px]">memory</span>
-                            </div>
-                            <div className="flex items-baseline gap-2">
-                                <span className="text-2xl font-bold text-gray-900 dark:text-white">0%</span>
-                            </div>
-                            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 mt-3">
-                                <div className="bg-[#0EA5E9] h-1.5 rounded-full" style={{ width: '0%' }}></div>
-                            </div>
-                        </div>
-
-                        {/* Storage S3 */}
-                        <div className="bg-white dark:bg-[#161B22] border border-gray-200 dark:border-[#30363D] rounded-lg p-5 shadow-sm">
-                            <div className="flex items-center justify-between mb-2">
-                                <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Storage (S3)</h3>
-                                <span className="material-symbols-outlined text-blue-500 text-[20px]">database</span>
-                            </div>
-                            <div className="flex items-baseline gap-2">
-                                <span className="text-2xl font-bold text-gray-900 dark:text-white">0 TB</span>
-                                <span className="text-xs text-gray-500 dark:text-gray-400">of 50 TB</span>
-                            </div>
-                            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 mt-3">
-                                <div className="bg-blue-600 h-1.5 rounded-full" style={{ width: '0%' }}></div>
+                        {/* Users */}
+                        <div className="bg-white dark:bg-[#161b22] p-6 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm hover:shadow-md transition-shadow">
+                            <div className="flex items-center gap-4">
+                                <div className="p-3 bg-blue-100 dark:bg-blue-900/20 text-blue-600 rounded-lg">
+                                    <span className="material-symbols-outlined">group</span>
+                                </div>
+                                <div>
+                                    <p className="text-sm text-gray-500 dark:text-gray-400">Total Users</p>
+                                    <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
+                                        {loading ? "..." : stats.totalUsers}
+                                    </h3>
+                                </div>
                             </div>
                         </div>
 
-                        {/* AI Queue */}
-                        <div className="bg-white dark:bg-[#161B22] border border-gray-200 dark:border-[#30363D] rounded-lg p-5 shadow-sm">
-                            <div className="flex items-center justify-between mb-2">
-                                <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">AI Queue</h3>
-                                <span className="material-symbols-outlined text-purple-500 text-[20px]">rocket_launch</span>
+                        {/* Projects */}
+                        <div className="bg-white dark:bg-[#161b22] p-6 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm hover:shadow-md transition-shadow">
+                            <div className="flex items-center gap-4">
+                                <div className="p-3 bg-purple-100 dark:bg-purple-900/20 text-purple-600 rounded-lg">
+                                    <span className="material-symbols-outlined">library_books</span>
+                                </div>
+                                <div>
+                                    <p className="text-sm text-gray-500 dark:text-gray-400">Total Projects</p>
+                                    <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
+                                        {loading ? "..." : stats.totalProjects}
+                                    </h3>
+                                </div>
                             </div>
-                            <div className="flex items-baseline gap-2">
-                                <span className="text-2xl font-bold text-gray-900 dark:text-white">0 Jobs</span>
-                                <span className="text-xs text-gray-500 font-medium">Idle</span>
-                            </div>
-                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-3">-</p>
                         </div>
 
-                        {/* Active Researchers */}
-                        <div className="bg-white dark:bg-[#161B22] border border-gray-200 dark:border-[#30363D] rounded-lg p-5 shadow-sm">
-                            <div className="flex items-center justify-between mb-2">
-                                <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Active Researchers</h3>
-                                <span className="material-symbols-outlined text-orange-500 text-[20px]">person</span>
+                        {/* Pending Verifications */}
+                        <div className="bg-white dark:bg-[#161b22] p-6 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm hover:shadow-md transition-shadow">
+                            <div className="flex items-center gap-4">
+                                <div className="p-3 bg-amber-100 dark:bg-amber-900/20 text-amber-600 rounded-lg">
+                                    <span className="material-symbols-outlined">verified_user</span>
+                                </div>
+                                <div>
+                                    <p className="text-sm text-gray-500 dark:text-gray-400">Pending Requests</p>
+                                    <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
+                                        {loading ? "..." : stats.pendingVerifications}
+                                    </h3>
+                                </div>
                             </div>
-                            <div className="flex items-baseline gap-2">
-                                <span className="text-2xl font-bold text-gray-900 dark:text-white">0</span>
-                            </div>
-                            <div className="flex -space-x-2 overflow-hidden mt-3">
-                                <span className="text-xs text-gray-500 dark:text-gray-400">No active users</span>
+                        </div>
+
+                         <div className="bg-white dark:bg-[#161b22] p-6 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm hover:shadow-md transition-shadow">
+                            <div className="flex items-center gap-4">
+                                <div className="p-3 bg-emerald-100 dark:bg-emerald-900/20 text-emerald-600 rounded-lg">
+                                    <span className="material-symbols-outlined">science</span>
+                                </div>
+                                <div>
+                                    <p className="text-sm text-gray-500 dark:text-gray-400">Active Researchers</p>
+                                    <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
+                                        {loading ? "..." : stats.activeResearchers} 
+                                    </h3>
+                                </div>
                             </div>
                         </div>
                     </div>
 
-                    {/* Charts & Logs Section */}
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        {/* Left: Chart */}
-                        <div className="lg:col-span-2 bg-white dark:bg-[#161B22] border border-gray-200 dark:border-[#30363D] rounded-lg p-6 shadow-sm">
-                            <div className="flex items-center justify-between mb-6">
-                                <div>
-                                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Repository Growth</h3>
-                                    <p className="text-sm text-gray-500 dark:text-gray-400">New projects vs User signups over time</p>
-                                </div>
-                                <div className="flex gap-2">
-                                    <button className="px-3 py-1 text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 rounded border border-gray-200 dark:border-gray-700">7D</button>
-                                    <button className="px-3 py-1 text-xs font-medium bg-[#0EA5E9] text-white rounded shadow-sm">30D</button>
-                                    <button className="px-3 py-1 text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 rounded border border-gray-200 dark:border-gray-700">3M</button>
-                                </div>
-                            </div>
-                            <div className="h-72 w-full">
+                        <div className="lg:col-span-2 bg-white dark:bg-[#161b22] p-6 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm">
+                            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">User Growth (Last 6 Months)</h3>
+                            <div className="h-64">
                                 <Line data={chartData} options={chartOptions} />
                             </div>
                         </div>
 
-                        {/* Right: AI Status & Logs */}
-                        <div className="lg:col-span-1 flex flex-col gap-6">
-                            {/* AI Status Card */}
-                            <div className="bg-white dark:bg-[#161B22] border border-gray-200 dark:border-[#30363D] rounded-lg p-6 shadow-sm">
-                                <div className="flex items-center justify-between mb-4">
-                                    <h3 className="text-base font-semibold text-gray-900 dark:text-white">AI Model Status</h3>
-                                    <span className="flex h-3 w-3 relative">
-                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                                        <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
-                                    </span>
-                                </div>
-                                <div className="space-y-4">
-                                    <div>
-                                        <p className="text-xs text-gray-500 dark:text-gray-400 uppercase font-semibold tracking-wider mb-1">Current Version</p>
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-lg font-mono font-medium text-gray-900 dark:text-gray-200">AcadLLM v2.1</span>
-                                            <span className="px-2 py-0.5 rounded text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800">Production</span>
+                        {/* Recent Users List */}
+                        <div className="bg-white dark:bg-[#161b22] p-6 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm">
+                            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Recent Users</h3>
+                             <div className="space-y-4">
+                                {loading ? (
+                                    <p className="text-sm text-gray-500">Loading users...</p>
+                                ) : recentUsers.length === 0 ? (
+                                    <p className="text-sm text-gray-500">No recent users.</p>
+                                ) : (
+                                    recentUsers.map((user) => (
+                                        <div key={user.id} className="flex items-center gap-3 p-2 hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-lg transition-colors">
+                                            <div className={`h-8 w-8 rounded-full flex items-center justify-center font-bold text-xs ${
+                                                user.role === 'admin' ? 'bg-purple-100 text-purple-600' : 
+                                                user.role === 'lecturer' ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'
+                                            }`}>
+                                                {user.displayName ? user.displayName.charAt(0).toUpperCase() : 'U'}
+                                            </div>
+                                            <div className="overflow-hidden">
+                                                <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{user.displayName || 'Unknown User'}</p>
+                                                <p className="text-xs text-gray-500 truncate">{user.email}</p>
+                                            </div>
+                                            <div className="ml-auto">
+                                                <span className={`text-[10px] px-2 py-0.5 rounded-full ${
+                                                    user.role === 'admin' ? 'bg-purple-100 text-purple-600' : 
+                                                    user.role === 'lecturer' ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'
+                                                }`}>
+                                                    {user.role}
+                                                </span>
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div>
-                                        <p className="text-xs text-gray-500 dark:text-gray-400 uppercase font-semibold tracking-wider mb-1">Last Training</p>
-                                        <p className="text-sm text-gray-700 dark:text-gray-300">Oct 24, 2023 - 14:30 UTC</p>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            {/* Terminal / Logs */}
-                            <div className="flex-1 bg-[#1e1e1e] rounded-lg border border-gray-200 dark:border-[#30363D] shadow-sm overflow-hidden flex flex-col font-mono text-xs h-[240px]">
-                                <div className="bg-[#2d2d2d] px-4 py-2 flex items-center justify-between border-b border-[#3e3e3e]">
-                                    <span className="text-gray-400">Processing Logs</span>
-                                </div>
-                                <div className="p-4 space-y-1.5 overflow-y-auto text-gray-300 custom-scrollbar flex items-center justify-center h-full">
-                                    <p className="text-gray-500 italic">No active logs</p>
-                                </div>
+                                    ))
+                                )}
                             </div>
                         </div>
                     </div>
-
-                    {/* Recent Project Table */}
-                    <div className="bg-white dark:bg-[#161B22] border border-gray-200 dark:border-[#30363D] rounded-lg shadow-sm overflow-hidden">
-                        <div className="px-6 py-4 border-b border-gray-200 dark:border-[#30363D] flex items-center justify-between">
-                            <h3 className="text-base font-semibold text-gray-900 dark:text-white">Recent Project Submissions</h3>
-                        </div>
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-sm text-left">
-                                <thead className="bg-gray-50 dark:bg-gray-800/50 text-gray-500 dark:text-gray-400 font-medium uppercase text-xs">
-                                    <tr>
-                                        <th className="px-6 py-3 tracking-wider">Project Name</th>
-                                        <th className="px-6 py-3 tracking-wider">Researcher</th>
-                                        <th className="px-6 py-3 tracking-wider">Level</th>
-                                        <th className="px-6 py-3 tracking-wider">Status</th>
-                                        <th className="px-6 py-3 tracking-wider">AI Score</th>
-                                        <th className="px-6 py-3 tracking-wider text-right">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-200 dark:divide-[#30363D]">
-                                    <tr>
-                                        <td colSpan="6" className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
-                                            No recent project submissions found.
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-
                 </div>
             </main>
         </div>

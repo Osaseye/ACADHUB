@@ -5,6 +5,8 @@ import { useAuth } from "../../../context/AuthContext";
 import { AuthLayout } from "../layout/AuthLayout";
 import { Input } from "../../../components/ui/Input";
 import { Button } from "../../../components/ui/Button";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "../../../config/firebase";
 
 export const LoginPage = () => {
   const navigate = useNavigate();
@@ -19,9 +21,28 @@ export const LoginPage = () => {
     setIsLoading(true);
     
     try {
-      await login(email, password);
-      toast.success("Welcome back!");
-      navigate("/dashboard");
+      const userCredential = await login(email, password);
+      const user = userCredential.user;
+
+      // Fetch role directly to determine redirect
+      const docRef = doc(db, "users", user.uid);
+      const docSnap = await getDoc(docRef);
+
+      if (docSnap.exists()) {
+          const role = docSnap.data().role;
+          toast.success("Welcome back!");
+          
+          if (role === 'lecturer') {
+              navigate("/lecturer/dashboard");
+          } else if (role === 'admin') {
+              navigate("/admin/dashboard");
+          } else {
+              navigate("/dashboard");
+          }
+      } else {
+          // Fallback if no user doc (shouldn't happen for valid users)
+          navigate("/dashboard");
+      }
     } catch (error) {
       toast.error("Invalid credentials");
       console.error(error);

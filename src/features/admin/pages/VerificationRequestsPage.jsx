@@ -1,27 +1,89 @@
-import React, { useState } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { Sidebar } from '../../../components/layout/Sidebar';
 import { useSidebar } from '../../../hooks/useSidebar';
 import { Link } from 'react-router-dom';
 import { toast } from "sonner";
+import { db } from '../../../config/firebase'; 
+import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore'; 
+import { useAuth } from '../../../context/AuthContext';
 
 export const VerificationRequestsPage = () => {
     const { isSidebarCollapsed, toggleSidebar } = useSidebar();
-    const [selectedRequest, setSelectedRequest] = useState(null); // For modal/detail view
-
-    // Mock Requests
+    const { currentUser, loading: authLoading } = useAuth();
+    const [selectedRequest, setSelectedRequest] = useState(null); 
     const [requests, setRequests] = useState([]);
+    const [loading, setLoading] = useState(true);
 
-    const handleApprove = (id) => {
-        toast.success("Lecturer Approved successfully");
-        setRequests(requests.filter(r => r.id !== id));
-        setSelectedRequest(null);
+    useEffect(() => {
+        const fetchRequests = async () => {
+            if (authLoading) return;
+            if (!currentUser) {
+                setLoading(false);
+                return;
+            }
+
+            try {
+                const q = query(
+                    collection(db, "users"),
+                    where("role", "==", "lecturer"),
+                    where("verificationStatus", "==", "pending")
+                );
+                
+                const querySnapshot = await getDocs(q);
+                const fetchedRequests = [];
+                querySnapshot.forEach((doc) => {
+                    fetchedRequests.push({ id: doc.id, ...doc.data() });
+                });
+                
+                setRequests(fetchedRequests);
+            } catch (error) {
+                console.error("Error fetching verification requests:", error);
+                // toast.error("Failed to load requests.");
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchRequests();
+    }, [currentUser, authLoading]);
+
+    const handleApprove = async (id) => {
+        try {
+            const userRef = doc(db, "users", id);
+            await updateDoc(userRef, {
+                verificationStatus: 'verified',
+                isVerified: true
+            });
+            
+            toast.success("Lecturer Approved successfully");
+            setRequests(requests.filter(r => r.id !== id));
+            setSelectedRequest(null);
+        } catch (error) {
+            console.error("Error approving lecturer:", error);
+            toast.error("Failed to approve lecturer.");
+        }
     };
 
-    const handleReject = (id) => {
-        toast.error("Application Rejected");
-        setRequests(requests.filter(r => r.id !== id));
-        setSelectedRequest(null);
+    const handleReject = async (id) => {
+        try {
+            const userRef = doc(db, "users", id);
+            await updateDoc(userRef, {
+                verificationStatus: 'rejected',
+                isVerified: false
+            });
+            
+            toast.error("Application Rejected");
+            setRequests(requests.filter(r => r.id !== id));
+            setSelectedRequest(null);
+        } catch (error) {
+            console.error("Error rejecting lecturer:", error);
+            toast.error("Failed to reject application.");
+        }
     };
+
+    if (authLoading) {
+        return <div className="flex h-screen items-center justify-center bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark">Loading...</div>;
+    }
 
     return (
         <div className="flex h-screen overflow-hidden bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark font-sans transition-colors duration-200">
@@ -53,38 +115,47 @@ export const VerificationRequestsPage = () => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                                {requests.map((req) => (
-                                    <tr key={req.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
-                                        <td className="px-6 py-4">
-                                            <div className="flex items-center gap-3">
-                                                <div className="h-10 w-10 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-300 flex items-center justify-center font-bold text-sm">
-                                                    {req.name.split(' ').map(n => n[0]).join('')}
-                                                </div>
-                                                <div>
-                                                    <p className="font-medium text-slate-900 dark:text-white">{req.name}</p>
-                                                    <p className="text-xs text-slate-500">{req.email}</p>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-300">{req.institution}</td>
-                                        <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-300">{req.department}</td>
-                                        <td className="px-6 py-4 text-sm text-slate-500">{req.date}</td>
-                                        <td className="px-6 py-4 flex justify-center gap-2">
-                                            <button 
-                                                onClick={() => setSelectedRequest(req)}
-                                                className="px-3 py-1.5 rounded-lg text-sm font-medium border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200"
-                                            >
-                                                Review
-                                            </button>
+                                {loading ? (
+                                    <tr>
+                                        <td colSpan="5" className="px-6 py-12 text-center text-slate-500">
+                                            Loading requests...
                                         </td>
                                     </tr>
-                                ))}
-                                {requests.length === 0 && (
+                                ) : requests.length === 0 ? (
                                     <tr>
                                         <td colSpan="5" className="px-6 py-12 text-center text-slate-500">
                                             No pending verification requests.
                                         </td>
                                     </tr>
+                                ) : (
+                                    requests.map((req) => (
+                                        <tr key={req.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
+                                            <td className="px-6 py-4">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="h-10 w-10 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-300 flex items-center justify-center font-bold text-sm uppercase">
+                                                        {(req.displayName || req.email || 'U').substring(0, 2)}
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-medium text-slate-900 dark:text-white">{req.displayName || 'Unknown Name'}</p>
+                                                        <p className="text-xs text-slate-500">{req.email}</p>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-300">{req.institution || 'N/A'}</td>
+                                            <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-300">{req.department || 'N/A'}</td>
+                                            <td className="px-6 py-4 text-sm text-slate-500">
+                                                {req.updatedAt?.seconds ? new Date(req.updatedAt.seconds * 1000).toLocaleDateString() : 'N/A'}
+                                            </td>
+                                            <td className="px-6 py-4 flex justify-center gap-2">
+                                                <button 
+                                                    onClick={() => setSelectedRequest(req)}
+                                                    className="px-3 py-1.5 rounded-lg text-sm font-medium border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200"
+                                                >
+                                                    Review
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))
                                 )}
                             </tbody>
                         </table>
@@ -106,7 +177,7 @@ export const VerificationRequestsPage = () => {
                                         <div className="space-y-4">
                                             <div>
                                                 <span className="block text-xs text-slate-400">Full Name</span>
-                                                <span className="text-base font-medium text-slate-900 dark:text-white">{selectedRequest.name}</span>
+                                                <span className="text-base font-medium text-slate-900 dark:text-white">{selectedRequest.displayName}</span>
                                             </div>
                                             <div>
                                                 <span className="block text-xs text-slate-400">Official Email</span>
@@ -114,21 +185,27 @@ export const VerificationRequestsPage = () => {
                                             </div>
                                             <div>
                                                 <span className="block text-xs text-slate-400">Position</span>
-                                                <span className="text-base font-medium text-slate-900 dark:text-white">Senior Lecturer</span>
+                                                <span className="text-base font-medium text-slate-900 dark:text-white">{selectedRequest.rank || 'N/A'}</span>
                                             </div>
                                             <div>
                                                 <span className="block text-xs text-slate-400">Institution</span>
                                                 <span className="text-base font-medium text-slate-900 dark:text-white">{selectedRequest.institution}</span>
                                             </div>
+                                             <div>
+                                                <span className="block text-xs text-slate-400">Department</span>
+                                                <span className="text-base font-medium text-slate-900 dark:text-white">{selectedRequest.department}</span>
+                                            </div>
                                         </div>
                                     </div>
                                     <div>
                                         <h4 className="text-xs uppercase tracking-wider text-slate-500 font-bold mb-4">Uploaded Evidence</h4>
-                                        <div className="bg-slate-100 dark:bg-slate-900 border border-dashed border-slate-300 dark:border-slate-700 rounded-lg p-4 flex flex-col items-center justify-center h-48 group cursor-pointer hover:border-blue-500 transition-colors">
-                                            <span className="material-symbols-outlined text-4xl text-slate-400 mb-2">description</span>
-                                            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{selectedRequest.file}</span>
-                                            <span className="text-xs text-blue-500 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">Click to preview</span>
-                                        </div>
+                                        <a href={selectedRequest.verificationUrl} target="_blank" rel="noopener noreferrer" className="block">
+                                            <div className="bg-slate-100 dark:bg-slate-900 border border-dashed border-slate-300 dark:border-slate-700 rounded-lg p-4 flex flex-col items-center justify-center h-48 group cursor-pointer hover:border-blue-500 transition-colors">
+                                                <span className="material-symbols-outlined text-4xl text-slate-400 mb-2">description</span>
+                                                <span className="text-sm font-medium text-slate-700 dark:text-slate-300">View Document</span>
+                                                <span className="text-xs text-blue-500 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">Click to open</span>
+                                            </div>
+                                        </a>
                                         <p className="text-xs text-slate-400 mt-2">
                                             * Verify the name and photo match the institution records.
                                         </p>
@@ -151,7 +228,6 @@ export const VerificationRequestsPage = () => {
                             </div>
                         </div>
                     )}
-
                 </div>
             </main>
         </div>

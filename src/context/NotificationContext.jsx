@@ -5,7 +5,6 @@ import { useAuth } from './AuthContext';
 import { toast } from 'sonner';
 
 const NotificationContext = createContext();
-
 export const useNotifications = () => useContext(NotificationContext);
 
 export const NotificationProvider = ({ children }) => {

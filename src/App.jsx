@@ -5,6 +5,7 @@ import ScrollToTop from "./components/common/ScrollToTop";
 import { PageLoader } from "./components/common/PageLoader";
 import { AuthProvider } from "./context/AuthContext";
 import { NotificationProvider } from "./context/NotificationContext";
+import { LecturerGuard } from "./features/lecturer/components/LecturerGuard";
 
 // Static Imports (Critical Path)
 import LandingPage from "./features/landing/LandingPage";
@@ -77,18 +78,20 @@ function App() {
         
         {/* Lecturer Routes */}
         <Route path="/onboarding/lecturer" element={<LecturerOnboardingPage />} />
-        <Route path="/lecturer/dashboard" element={<LecturerDashboardPage />} />
-        <Route path="/lecturer/supervision" element={<SupervisionManagementPage />} />
-        <Route path="/lecturer/supervision/:requestId" element={<SupervisionRequestDetailPage />} />
-        <Route path="/lecturer/publications" element={<LecturerPublicationsPage />} />
-        <Route path="/lecturer/analytics" element={<LecturerAnalyticsPage />} />
-        <Route path="/lecturer/repository" element={<LecturerRepositoryPage />} />
-        <Route path="/lecturer/repository/:id" element={<LecturerRepositoryDetailPage />} />
-        <Route path="/lecturer/review/:projectId" element={<LecturerProjectReviewPage />} />
-        <Route path="/lecturer/notifications" element={<LecturerNotificationsPage />} />
-        <Route path="/lecturer/settings" element={<LecturerSettingsPage />} />
-
-        <Route path="/lecturer/publications/new" element={<LecturerUploadPage />} />
+        
+        <Route element={<LecturerGuard />}>
+            <Route path="/lecturer/dashboard" element={<LecturerDashboardPage />} />
+            <Route path="/lecturer/supervision" element={<SupervisionManagementPage />} />
+            <Route path="/lecturer/supervision/:requestId" element={<SupervisionRequestDetailPage />} />
+            <Route path="/lecturer/publications" element={<LecturerPublicationsPage />} />
+            <Route path="/lecturer/analytics" element={<LecturerAnalyticsPage />} />
+            <Route path="/lecturer/repository" element={<LecturerRepositoryPage />} />
+            <Route path="/lecturer/repository/:id" element={<LecturerRepositoryDetailPage />} />
+            <Route path="/lecturer/review/:projectId" element={<LecturerProjectReviewPage />} />
+            <Route path="/lecturer/notifications" element={<LecturerNotificationsPage />} />
+            <Route path="/lecturer/settings" element={<LecturerSettingsPage />} />
+            <Route path="/lecturer/publications/new" element={<LecturerUploadPage />} />
+        </Route>
         
         {/* Shared Routes */}
         <Route path="/repository" element={<RepositoryPage />} />
@@ -100,13 +103,13 @@ function App() {
         <Route path="/uploads/edit/:id" element={<UploadProjectPage />} /> 
         <Route path="/analytics" element={<TrendsPage />} />
         <Route path="/saved" element={<SavedPage />} />
-        <Route path="/notifications" element={<NotificationsPage />} />
-        <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/notifications" element={<NotificationsPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
         </Routes>
       </Suspense>
-    </NotificationProvider>
-  </AuthProvider>
-</Router>
+      </NotificationProvider>
+    </AuthProvider>
+  </Router>
   );
 }
 

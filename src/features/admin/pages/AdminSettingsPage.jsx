@@ -1,23 +1,117 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Sidebar } from '../../../components/layout/Sidebar';
 import { useSidebar } from '../../../hooks/useSidebar';
 import { toast } from 'sonner';
+import { db, auth } from '../../../config/firebase';
+import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { updateProfile } from 'firebase/auth';
+import { useAuth } from '../../../context/AuthContext';
 
 export const AdminSettingsPage = () => {
     const { isSidebarCollapsed, toggleSidebar } = useSidebar();
+    const { currentUser } = useAuth();
     
-    // State Simulators
+    // System Settings State
     const [maintenanceMode, setMaintenanceMode] = useState(false);
     const [registrationOpen, setRegistrationOpen] = useState(true);
     const [aiModel, setAiModel] = useState('acad-llm-v2.1');
     const [plagiarismThreshold, setPlagiarismThreshold] = useState(85);
+    
+    // Profile Settings State
+    const [profileName, setProfileName] = useState('');
+    const [profileDepartment, setProfileDepartment] = useState('');
+    const [loading, setLoading] = useState(true);
 
-    const handleSave = () => {
-        toast.promise(new Promise((resolve) => setTimeout(resolve, 1000)), {
+    useEffect(() => {
+        const loadDat = async () => {
+            try {
+                // 1. Fetch System Settings
+                const settingsRef = doc(db, "settings", "general");
+                const settingsSnap = await getDoc(settingsRef);
+                
+                if (settingsSnap.exists()) {
+                    const data = settingsSnap.data();
+                    setMaintenanceMode(data.maintenanceMode ?? false);
+                    setRegistrationOpen(data.registrationOpen ?? true);
+                    setAiModel(data.aiModel ?? 'acad-llm-v2.1');
+                    setPlagiarismThreshold(data.plagiarismThreshold ?? 85);
+                }
+
+                // 2. Fetch User Profile (if not already in currentUser context, but good to refresh)
+                if (currentUser) {
+                    setProfileName(currentUser.displayName || '');
+                    // Check firestore for department
+                    const userRef = doc(db, "users", currentUser.uid);
+                    const userSnap = await getDoc(userRef);
+                    if (userSnap.exists()) {
+                        setProfileDepartment(userSnap.data().department || '');
+                        if (!currentUser.displayName) {
+                             setProfileName(userSnap.data().displayName || '');
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error("Error loading settings:", error);
+                toast.error("Failed to load settings");
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        loadDat();
+    }, [currentUser]);
+
+    const handleSystemSave = async () => {
+        const savePromise = async () => {
+            const docRef = doc(db, "settings", "general");
+            await setDoc(docRef, {
+                maintenanceMode,
+                registrationOpen,
+                aiModel,
+                plagiarismThreshold,
+                updatedAt: new Date()
+            }, { merge: true });
+        };
+
+        toast.promise(savePromise(), {
             loading: 'Updating system configuration...',
-            success: 'Settings updated successfully',
+            success: 'System settings updated',
             error: 'Failed to update settings'
         });
+    };
+
+    const handleProfileSave = async () => {
+        if (!currentUser) return;
+
+        const savePromise = async () => {
+            // 1. Update Firebase Auth Profile
+            if (auth.currentUser) {
+                await updateProfile(auth.currentUser, {
+                    displayName: profileName
+                });
+            }
+
+            // 2. Update Firestore User Document
+            const userRef = doc(db, "users", currentUser.uid);
+            await updateDoc(userRef, {
+                displayName: profileName,
+                department: profileDepartment,
+                updatedAt: new Date()
+            });
+            
+            // Force reload to update context if needed, or user can just refresh
+            // Ideally AuthContext should listen to changes, but updateProfile doesn't always trigger onAuthStateChanged immediately for custom fields
+        };
+
+        toast.promise(savePromise(), {
+            loading: 'Updating profile...',
+            success: 'Profile updated successfully',
+            error: 'Failed to update profile'
+        });
+    };
+
+    const handleSaveAll = async () => {
+        await Promise.all([handleSystemSave(), handleProfileSave()]);
     };
 
     return (
@@ -34,17 +128,52 @@ export const AdminSettingsPage = () => {
                     {/* Header */}
                     <div className="flex justify-between items-center">
                         <div>
-                            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">System Settings</h1>
-                            <p className="text-sm text-gray-500 dark:text-gray-400">Configure global parameters and environment variables.</p>
+                            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Settings & Profile</h1>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">Manage your account and system configuration.</p>
                         </div>
                         <button 
-                            onClick={handleSave}
+                            onClick={handleSaveAll}
                             className="px-4 py-2 bg-[#0EA5E9] hover:bg-blue-600 text-white text-sm font-medium rounded-lg shadow-sm transition-colors flex items-center gap-2"
                         >
                             <span className="material-symbols-outlined text-[18px]">save</span>
-                            Save Changes
+                            Save All Changes
                         </button>
                     </div>
+
+                    {/* Profile Configuration */}
+                    <section className="bg-white dark:bg-[#161B22] border border-gray-200 dark:border-[#30363D] rounded-lg shadow-sm overflow-hidden">
+                        <div className="px-6 py-4 border-b border-gray-200 dark:border-[#30363D] bg-gray-50 dark:bg-gray-800/50">
+                            <h2 className="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                                <span className="material-symbols-outlined text-gray-500">person</span>
+                                Your Profile
+                            </h2>
+                        </div>
+                        <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <label className="text-sm font-medium text-gray-900 dark:text-white block mb-2">Display Name</label>
+                                <input 
+                                    type="text" 
+                                    value={profileName}
+                                    onChange={(e) => setProfileName(e.target.value)}
+                                    placeholder="e.g. Administrator"
+                                    className="w-full bg-white dark:bg-[#0D1117] border border-gray-300 dark:border-[#30363D] rounded-lg text-sm px-3 py-2 text-gray-900 dark:text-white focus:ring-2 focus:ring-[#0EA5E9] outline-none"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-sm font-medium text-gray-900 dark:text-white block mb-2">Department / Role Title</label>
+                                <input 
+                                    type="text" 
+                                    value={profileDepartment}
+                                    onChange={(e) => setProfileDepartment(e.target.value)}
+                                    placeholder="e.g. IT Support"
+                                    className="w-full bg-white dark:bg-[#0D1117] border border-gray-300 dark:border-[#30363D] rounded-lg text-sm px-3 py-2 text-gray-900 dark:text-white focus:ring-2 focus:ring-[#0EA5E9] outline-none"
+                                />
+                            </div>
+                            <div className="md:col-span-2 text-xs text-gray-500 dark:text-gray-400">
+                                * Your email ({currentUser?.email}) cannot be changed here. Contact support for email changes.
+                            </div>
+                        </div>
+                    </section>
 
                     {/* General Configuration */}
                     <section className="bg-white dark:bg-[#161B22] border border-gray-200 dark:border-[#30363D] rounded-lg shadow-sm overflow-hidden">

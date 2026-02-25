@@ -5,7 +5,7 @@ import { useTheme } from '../../../hooks/useTheme';
 import { toast } from 'sonner';
 import { useAuth } from '../../../context/AuthContext';
 import { db } from '../../../config/firebase';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { updateProfile } from 'firebase/auth';
 import { NIGERIAN_UNIVERSITIES } from '../../../data/universities';
 
@@ -34,31 +34,35 @@ export const SettingsPage = () => {
                 try {
                     const userRef = doc(db, "users", currentUser.uid);
                     const docSnap = await getDoc(userRef);
+                    
+                    let data = {};
                     if (docSnap.exists()) {
-                        const data = docSnap.data();
+                        data = docSnap.data();
+                    }
                         
-                        // Handle name split if firstName/lastName not in DB
-                        let first = data.firstName || "";
-                        let last = data.lastName || "";
-                        if (!first && !last && currentUser.displayName) {
-                            const parts = currentUser.displayName.split(' ');
+                    // Handle name split, use auth profile as fallback
+                    let first = data.firstName || "";
+                    let last = data.lastName || "";
+                    if (!first && !last && currentUser.displayName) {
+                        const parts = currentUser.displayName.trim().split(' ');
+                        if (parts.length > 0) {
                             first = parts[0];
                             last = parts.slice(1).join(' ');
                         }
-
-                        setFormData({
-                            firstName: first,
-                            lastName: last,
-                            email: currentUser.email || "",
-                            institution: data.institution || "",
-                            department: data.department || "",
-                            bio: data.bio || "",
-                            researchInterests: data.researchInterests || (Array.isArray(data.interests) ? data.interests.join(", ") : "") || ""
-                        });
                     }
+
+                    setFormData({
+                        firstName: first,
+                        lastName: last,
+                        email: currentUser.email || "",
+                        institution: data.institution || "",
+                        department: data.department || "",
+                        bio: data.bio || "",
+                        researchInterests: data.researchInterests || (Array.isArray(data.interests) ? data.interests.join(", ") : "") || ""
+                    });
                 } catch (error) {
                     console.error("Error fetching user data:", error);
-                    toast.error("Failed to load profile data");
+                    // toast.error("Failed to load profile data"); // weak error, maybe silent fail is better or specific
                 } finally {
                     setLoading(false);
                 }
@@ -86,20 +90,26 @@ export const SettingsPage = () => {
             
             const userRef = doc(db, "users", currentUser.uid);
             
-            // Update Firestore
-            await updateDoc(userRef, {
-                firstName: formData.firstName,
-                lastName: formData.lastName,
-                institution: formData.institution,
-                department: formData.department,
-                bio: formData.bio,
-                researchInterests: formData.researchInterests,
-                lastUpdated: new Date()
-            });
+            // Use setDoc with merge instead of updateDoc to handle cases where 
+            // the user document might not exist yet (e.g. legacy auth users)
+            // This also fixes permission issues related to 'update' on non-existent docs
+            const { firstName, lastName, institution, department, bio, researchInterests } = formData;
+            
+            await setDoc(userRef, {
+                firstName,
+                lastName,
+                institution,
+                department,
+                bio,
+                researchInterests,
+                lastUpdated: new Date(),
+                email: currentUser.email, // ensure email is set
+                uid: currentUser.uid      // ensure uid is set
+            }, { merge: true });
 
             // Update Auth Profile Display Name
             const displayName = `${formData.firstName} ${formData.lastName}`.trim();
-            if (displayName !== currentUser.displayName) {
+            if (displayName && displayName !== currentUser.displayName) {
                 await updateProfile(currentUser, {
                     displayName: displayName
                 });
@@ -108,7 +118,7 @@ export const SettingsPage = () => {
             toast.success("Profile updated successfully!");
         } catch (error) {
             console.error("Error updating profile:", error);
-            toast.error("Failed to update profile");
+            toast.error("Failed to update profile: " + error.message);
         } finally {
             setSaving(false);
         }

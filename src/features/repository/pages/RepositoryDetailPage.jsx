@@ -287,7 +287,27 @@ export const RepositoryDetailPage = () => {
                         </ol>
                     </nav>
 
-                    {/* Header Section */}
+                    {/* Feedback Alert for Students */}
+                    {currentUser && project.studentId === currentUser.uid && project.status === 'Rejected' && (
+                        <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/10 border-l-4 border-red-500 rounded-lg">
+                            <div className="flex">
+                                <span className="material-symbols-outlined text-red-500 mr-3">error</span>
+                                <div>
+                                    <h3 className="text-sm font-medium text-red-800 dark:text-red-300">Project Returned for Corrections</h3>
+                                    <div className="mt-2 text-sm text-red-700 dark:text-red-400">
+                                        <p className="font-semibold mb-1">Supervisor Feedback:</p>
+                                        <p>{project.lecturerFeedback || "No specific feedback provided. Please check with your supervisor."}</p>
+                                    </div>
+                                    <div className="mt-4">
+                                        <Link to={`/uploads/edit/${project.id}`} className="text-sm font-medium text-red-800 dark:text-red-300 underline hover:text-red-900">
+                                            Edit and Resubmit
+                                        </Link>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     <div className="bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-lg p-6 mb-8 shadow-sm">
                         <div className="lg:flex lg:items-start lg:justify-between">
                             <div className="flex-1 min-w-0">
@@ -323,14 +343,40 @@ export const RepositoryDetailPage = () => {
                                             Sup: {project.supervisorName}
                                         </div>
                                     )}
-                                    <div className="mt-2 flex items-center text-sm text-green-600 dark:text-green-400">
-                                        <span className="material-symbols-outlined mr-1.5 text-[18px]">check_circle</span>
-                                        {project.status || 'Active'}
+                                    <div className="mt-2 flex items-center text-sm">
+                                        {project.status === 'verified' ? (
+                                            <span className="flex items-center text-green-600 dark:text-green-400 font-medium">
+                                                <span className="material-symbols-outlined mr-1.5 text-[18px]">check_circle</span>
+                                                Verified
+                                            </span>
+                                        ) : project.status === 'Rejected' ? (
+                                            <span className="flex items-center text-red-600 dark:text-red-400 font-medium">
+                                                <span className="material-symbols-outlined mr-1.5 text-[18px]">cancel</span>
+                                                Rejected
+                                            </span>
+                                        ) : (
+                                            <span className="flex items-center text-yellow-600 dark:text-yellow-400 font-medium">
+                                                <span className="material-symbols-outlined mr-1.5 text-[18px]">hourglass_empty</span>
+                                                Pending Review
+                                            </span>
+                                        )}
                                     </div>
                                 </div>
                             </div>
                             <div className="mt-5 flex lg:mt-0 lg:ml-4 gap-3">
                                 {/* Action buttons */}
+                                {currentUser && (project.studentId === currentUser.uid || currentUser.role === 'admin') && 
+                                 (project.status === 'Rejected' || project.status === 'Pending') && (
+                                    <span className="hidden sm:block">
+                                        <Link 
+                                            to={`/uploads/edit/${project.id}`}
+                                            className="inline-flex items-center px-4 py-2 border border-border-light dark:border-border-dark rounded-md shadow-sm text-sm font-medium text-text-light dark:text-text-dark bg-white dark:bg-[#21262d] hover:bg-slate-50 dark:hover:bg-[#30363d] focus:outline-none transition-colors"
+                                        >
+                                            <span className="material-symbols-outlined mr-2 !text-lg">edit</span>
+                                            Edit Project
+                                        </Link>
+                                    </span>
+                                )}
                                 <span className="hidden sm:block">
                                     <button 
                                         onClick={handleSaveProject}

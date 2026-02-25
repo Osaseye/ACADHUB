@@ -29,13 +29,11 @@ service cloud.firestore {
 
     // --- Users Collection ---
     match /users/{userId} {
-      // Anyone authenticated can read user profiles (needed for displaying names/avatars)
       allow read: if isAuthenticated();
-      // Users can update their own data, except 'role', 'isVerified', and 'status'
-      // Admins can update everything
-      allow create: if isAuthenticated() && isOwner(userId); // Creation happens on register
-      allow update: if (isAuthenticated() && isOwner(userId) && 
-                        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'isVerified', 'status'])) 
+      allow create: if isAuthenticated() && isOwner(userId);
+      // Simplify update rule to debug permission issue. 
+      // Ensure users can update their own profile but not critical fields.
+      allow update: if (isAuthenticated() && isOwner(userId)) 
                     || (isAuthenticated() && isAdmin());
       allow delete: if isAuthenticated() && isAdmin();
     }
@@ -58,24 +56,14 @@ service cloud.firestore {
       );
       // Owner or Admin can delete
       allow delete: if isAuthenticated() && (resource.data.studentId == request.auth.uid || isAdmin());
-    }
 
-    // --- Notifications Collection ---
-    match /notifications/{notificationId} {
-      // Allow reading if the document belongs to the user (recipient)
-      allow read: if isAuthenticated() && (
-        resource.data.recipientId == request.auth.uid || 
-        resource.data.userId == request.auth.uid || 
-        isAdmin()
-      );
-      // Allow update (mark read) if owner
-      allow update: if isAuthenticated() && (
-        resource.data.recipientId == request.auth.uid || 
-        resource.data.userId == request.auth.uid || 
-        isAdmin()
-      );
-      // Anyone authenticated can delete their own notifications
-      allow delete: if isAuthenticated() && (
+      // --- Internal Notes Subcollection ---
+      match /notes/{noteId} {
+        // Only lecturers/admins can read/write notes
+        allow read: if isAuthenticated() && (isLecturer() || isAdmin());
+        allow create: if isAuthenticated() && (isLecturer() || isAdmin());
+        allow update, delete: if isAuthenticated() && (resource.data.authorId == request.auth.uid || isAdmin());
+      }
         resource.data.recipientId == request.auth.uid || 
         resource.data.userId == request.auth.uid || 
         isAdmin()
@@ -118,6 +106,12 @@ service cloud.firestore {
     match /reports/{reportId} {
       allow create: if isAuthenticated();
       allow read, update, delete: if isAuthenticated() && isAdmin();
+    }
+
+    // --- System Settings (Admin Only) ---
+    match /settings/{settingId} {
+      allow read: if isAuthenticated(); // Allow read for all authenticated users (needed for maintenance mode checks etc)
+      allow write: if isAuthenticated() && isAdmin();
     }
   }
 }

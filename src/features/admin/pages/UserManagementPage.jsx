@@ -1,41 +1,95 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Sidebar } from '../../../components/layout/Sidebar';
 import { useSidebar } from '../../../hooks/useSidebar';
 import { toast } from 'sonner';
+import { db } from '../../../config/firebase';
+import { collection, getDocs, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 
 export const UserManagementPage = () => {
     const { isSidebarCollapsed, toggleSidebar } = useSidebar();
     const [searchTerm, setSearchTerm] = useState('');
     const [roleFilter, setRoleFilter] = useState('all');
+    const [loading, setLoading] = useState(true);
 
     // Mock User Data
     const [users, setUsers] = useState([]);
 
-    const handleStatusChange = (userId, newStatus) => {
-        setUsers(users.map(user => user.id === userId ? { ...user, status: newStatus } : user));
-        toast.success(`User status updated to ${newStatus}`);
+    useEffect(() => {
+        const fetchUsers = async () => {
+            try {
+                setLoading(true);
+                const querySnapshot = await getDocs(collection(db, "users"));
+                const usersList = querySnapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data(),
+                    // Fallback for fields if they are missing
+                    name: doc.data().displayName || doc.data().email?.split('@')[0] || 'Unknown',
+                    joinDate: doc.data().createdAt?.seconds 
+                        ? new Date(doc.data().createdAt.seconds * 1000).toLocaleDateString()
+                        : 'N/A',
+                    department: doc.data().department || 'N/A',
+                    status: doc.data().status || 'active'
+                }));
+                setUsers(usersList);
+            } catch (error) {
+                console.error("Error fetching users:", error);
+                toast.error("Failed to fetch users");
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchUsers();
+    }, []);
+
+    const handleStatusChange = async (userId, newStatus) => {
+        try {
+            const userRef = doc(db, "users", userId);
+            await updateDoc(userRef, { status: newStatus });
+            
+            setUsers(users.map(user => user.id === userId ? { ...user, status: newStatus } : user));
+            toast.success(`User status updated to ${newStatus}`);
+        } catch (error) {
+            console.error("Error updating status:", error);
+            toast.error("Failed to update status");
+        }
     };
 
-    const handleDelete = (userId) => {
-        if(confirm("Are you sure you want to delete this user? This action cannot be undone.")) {
-            setUsers(users.filter(user => user.id !== userId));
-            toast.success("User deleted successfully");
+    const handleRoleChange = async (userId, newRole) => {
+        if (!confirm(`Are you sure you want to change this user's role to ${newRole}?`)) return;
+        
+        try {
+            const userRef = doc(db, "users", userId);
+            await updateDoc(userRef, { role: newRole });
+            
+            setUsers(users.map(user => user.id === userId ? { ...user, role: newRole } : user));
+            toast.success(`User role updated to ${newRole}`);
+        } catch (error) {
+            console.error("Error updating role:", error);
+            toast.error("Failed to update role");
+        }
+    };
+
+    const handleDelete = async (userId) => {
+        if(confirm("Are you sure you want to delete this user? This removes their profile data but may not delete their authentication account.")) {
+            try {
+                await deleteDoc(doc(db, "users", userId));
+                setUsers(users.filter(user => user.id !== userId));
+                toast.success("User profile deleted successfully");
+            } catch (error) {
+                console.error("Error deleting user:", error);
+                toast.error("Failed to delete user");
+            }
         }
     };
 
     const filteredUsers = users.filter(user => {
-        const matchesSearch = user.name.toLowerCase().includes(searchTerm.toLowerCase()) || user.email.toLowerCase().includes(searchTerm.toLowerCase());
+        const nameMatch = user.name?.toLowerCase().includes(searchTerm.toLowerCase());
+        const emailMatch = user.email?.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesSearch = nameMatch || emailMatch;
         const matchesRole = roleFilter === 'all' || user.role === roleFilter;
         return matchesSearch && matchesRole;
     });
-
-    const getRoleBadgeColor = (role) => {
-        switch(role) {
-            case 'admin': return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border-red-200 dark:border-red-800';
-            case 'lecturer': return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 border-purple-200 dark:border-purple-800';
-            default: return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-blue-200 dark:border-blue-800';
-        }
-    };
 
     const getStatusIndicator = (status) => {
         switch(status) {
@@ -93,9 +147,6 @@ export const UserManagementPage = () => {
                                 <option value="lecturer">Lecturers</option>
                                 <option value="admin">Admins</option>
                             </select>
-                            <button className="h-10 w-10 flex items-center justify-center bg-gray-50 dark:bg-[#0D1117] border border-gray-200 dark:border-[#30363D] rounded-lg text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 transition-colors">
-                                <span className="material-symbols-outlined text-[20px]">filter_list</span>
-                            </button>
                         </div>
                     </div>
 
@@ -114,12 +165,18 @@ export const UserManagementPage = () => {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-200 dark:divide-[#30363D]">
-                                    {filteredUsers.map((user) => (
+                                    {loading ? (
+                                         <tr>
+                                             <td colSpan="6" className="px-6 py-12 text-center text-gray-500">
+                                                 Loading users...
+                                             </td>
+                                         </tr>
+                                    ) : filteredUsers.map((user) => (
                                         <tr key={user.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors group">
                                             <td className="px-6 py-4">
                                                 <div className="flex items-center gap-3">
                                                     <div className="h-9 w-9 rounded-full bg-gradient-to-tr from-gray-200 to-gray-300 dark:from-gray-700 dark:to-gray-600 flex items-center justify-center text-xs font-bold text-gray-600 dark:text-gray-300">
-                                                        {user.name.split(' ').map(n => n[0]).join('').substring(0, 2)}
+                                                        {user.name.charAt(0).toUpperCase()}
                                                     </div>
                                                     <div>
                                                         <div className="font-medium text-gray-900 dark:text-white">{user.name}</div>
@@ -128,9 +185,21 @@ export const UserManagementPage = () => {
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4">
-                                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium border ${getRoleBadgeColor(user.role)} capitalize`}>
-                                                    {user.role}
-                                                </span>
+                                                <select 
+                                                    value={user.role}
+                                                    onChange={(e) => handleRoleChange(user.id, e.target.value)}
+                                                    className={`
+                                                        appearance-none cursor-pointer pl-2 pr-6 py-1 rounded text-xs font-medium border capitalize outline-none focus:ring-2 focus:ring-offset-1 focus:ring-blue-500
+                                                        ${user.role === 'admin' ? 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:border-red-800' : ''}
+                                                        ${user.role === 'lecturer' ? 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-900/20 dark:border-purple-800' : ''}
+                                                        ${user.role === 'student' ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800' : ''}
+                                                    `}
+                                                    style={{ backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`, backgroundPosition: `right 0.2rem center`, backgroundRepeat: 'no-repeat', backgroundSize: '1.2em 1.2em' }}
+                                                >
+                                                    <option value="student">Student</option>
+                                                    <option value="lecturer">Lecturer</option>
+                                                    <option value="admin">Admin</option>
+                                                </select>
                                             </td>
                                             <td className="px-6 py-4 text-gray-600 dark:text-gray-400">
                                                 {user.department}
@@ -143,9 +212,6 @@ export const UserManagementPage = () => {
                                             </td>
                                             <td className="px-6 py-4 text-right">
                                                 <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <button className="p-1 text-gray-400 hover:text-[#0EA5E9] transition-colors" title="Edit User">
-                                                        <span className="material-symbols-outlined text-[18px]">edit</span>
-                                                    </button>
                                                     {user.status === 'active' ? (
                                                         <button 
                                                             onClick={() => handleStatusChange(user.id, 'suspended')}
@@ -174,7 +240,7 @@ export const UserManagementPage = () => {
                                             </td>
                                         </tr>
                                     ))}
-                                    {filteredUsers.length === 0 && (
+                                    {!loading && filteredUsers.length === 0 && (
                                         <tr>
                                             <td colSpan="6" className="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
                                                 <div className="flex flex-col items-center justify-center">

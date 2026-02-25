@@ -136,17 +136,19 @@ export const Sidebar = ({ isCollapsed, toggleSidebar, role = 'student' }) => {
                     <div className={`h-9 w-9 flex-shrink-0 rounded-full flex items-center justify-center text-white font-bold text-sm ${role === 'admin' ? "bg-red-600" : (role === 'lecturer' ? "bg-gradient-to-tr from-purple-500 to-indigo-500" : "bg-gradient-to-tr from-blue-500 to-cyan-400")}`}>
                         {
                             currentUser?.displayName 
-                                ? currentUser.displayName.charAt(0).toUpperCase() + (currentUser.displayName.split(' ')[1]?.[0]?.toUpperCase() || '')
+                                ? (currentUser.displayName.includes('@') 
+                                    ? currentUser.displayName.charAt(0).toUpperCase() 
+                                    : currentUser.displayName.charAt(0).toUpperCase() + (currentUser.displayName.split(' ')[1]?.[0]?.toUpperCase() || ''))
                                 : (role === 'admin' ? "AD" : (role === 'lecturer' ? "DR" : "JD"))
                         }
                     </div>
                     {!isCollapsed && (
                         <div className="ml-3 text-left overflow-hidden min-w-0">
-                            <p className="text-sm font-medium text-text-light dark:text-white group-hover:text-primary transition-colors truncate">
+                            <p className="text-sm font-medium text-text-light dark:text-white group-hover:text-primary transition-colors truncate" title={currentUser?.displayName}>
                                 {currentUser?.displayName || (role === 'admin' ? "System Admin" : (role === 'lecturer' ? "Dr. A. Bello" : "John Doe"))}
                             </p>
-                            <p className="text-xs text-text-muted-light dark:text-text-muted-dark truncate">
-                                {currentUser?.department || currentUser?.email || (role === 'admin' ? "IT Directorate" : (role === 'lecturer' ? "Snr. Lecturer, CS" : "Department"))}
+                            <p className="text-xs text-text-muted-light dark:text-text-muted-dark truncate" title={currentUser?.department || currentUser?.email}>
+                                {currentUser?.role === 'admin' ? 'Administrator' : (currentUser?.department || currentUser?.email || "Department")}
                             </p>
                         </div>
                     )}

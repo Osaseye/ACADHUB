@@ -4,7 +4,7 @@ import { Sidebar } from '../../../components/layout/Sidebar';
 import { useSidebar } from '../../../hooks/useSidebar';
 import { useAuth } from '../../../context/AuthContext';
 import { db } from '../../../config/firebase';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, collection, addDoc, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -17,6 +17,7 @@ import {
   Filler,
   Legend,
 } from 'chart.js';
+import { toast } from 'sonner';
 
 // Register ChartJS components
 ChartJS.register(
@@ -36,6 +37,8 @@ export const LecturerRepositoryDetailPage = () => {
     const { id } = useParams();
     const [project, setProject] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [notes, setNotes] = useState([]);
+    const [newNote, setNewNote] = useState('');
 
     useEffect(() => {
         const fetchProject = async () => {
@@ -44,7 +47,25 @@ export const LecturerRepositoryDetailPage = () => {
             const docSnap = await getDoc(docRef);
   
             if (docSnap.exists()) {
-              setProject({ id: docSnap.id, ...docSnap.data() });
+              const data = docSnap.data();
+              // Fetch Author/University Details if missing
+              let authorName = data.authorName;
+              let university = data.university;
+
+              if ((!authorName || !university) && data.studentId) {
+                 const userSnap = await getDoc(doc(db, "users", data.studentId));
+                 if (userSnap.exists()) {
+                     authorName = authorName || userSnap.data().displayName || userSnap.data().firstName + ' ' + userSnap.data().lastName;
+                     university = university || userSnap.data().institution;
+                 }
+              }
+
+              setProject({ 
+                  id: docSnap.id, 
+                  ...data,
+                  authorName: authorName || 'Unknown Author',
+                  university: university || 'Unknown Institution'
+              });
             } else {
               console.log('No such document!');
             }
@@ -56,7 +77,38 @@ export const LecturerRepositoryDetailPage = () => {
         };
   
         fetchProject();
+        
+        // Fetch Notes Realtime
+        const notesQ = query(collection(db, `projects/${id}/notes`), orderBy('createdAt', 'desc'));
+        const unsubscribe = onSnapshot(notesQ, (snapshot) => {
+            const fetchedNotes = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            }));
+            setNotes(fetchedNotes);
+        });
+
+        return () => unsubscribe();
     }, [id]);
+
+    const handleAddNote = async (e) => {
+        e.preventDefault();
+        if(!newNote.trim()) return;
+        
+        try {
+            await addDoc(collection(db, `projects/${id}/notes`), {
+                content: newNote,
+                authorId: currentUser.uid,
+                authorName: currentUser.displayName || 'Lecturer',
+                createdAt: new Date()
+            });
+            setNewNote('');
+            toast.success("Note added");
+        } catch (error) {
+            console.error("Error adding note:", error);
+            toast.error("Failed to add note");
+        }
+    };
 
     const chartData = {
         labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
@@ -94,38 +146,50 @@ export const LecturerRepositoryDetailPage = () => {
                 verifiedBy: currentUser.uid, 
                 verifiedAt: new Date()
             });
-            // Update local state
-            setProject(prev => ({ ...prev, status: 'verified' }));
-            alert('Project verified successfully!');
-        } catch (error) {
-            console.error('Error verifying project:', error);
-            alert('Failed to verify project. ' + error.message);
-        }
-    };
+        
+        // Add note indicating verification
+        await addDoc(collection(db, `projects/${id}/notes`), {
+            content: `Project Verified by ${currentUser.displayName}`,
+            authorId: currentUser.uid,
+            authorName: currentUser.displayName || 'Supervisor',
+            type: 'system',
+            createdAt: new Date()
+        });
 
-    const handleReject = async () => {
-        if (!window.confirm("Are you sure you want to reject this project? This will change the status back to Draft/Rejected.")) return;
-        try {
-            const docRef = doc(db, 'projects', id);
-            await updateDoc(docRef, {
-                status: 'Rejected',
-                verifiedBy: currentUser.uid, 
-                verifiedAt: new Date()
-            });
-            // Update local state
-            setProject(prev => ({ ...prev, status: 'Rejected' }));
-            alert('Project rejected.');
-        } catch (error) {
-            console.error('Error rejecting project:', error);
-            alert('Failed to reject project.');
-        }
-    };
+        // Update local state
+        setProject(prev => ({ ...prev, status: 'verified' }));
+        toast.success("Project verified successfully!");
+    } catch (error) {
+        console.error('Error verifying project:', error);
+        toast.error("Failed to verify project");
+    }
+};
 
-    if (loading) {
-        return (
-            <div className="flex h-screen items-center justify-center bg-background-light dark:bg-background-dark">
-                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-            </div>
+const handleReject = async () => {
+    if (!window.confirm("Are you sure you want to reject this project? This will change the status back to Draft/Rejected.")) return;
+    try {
+        const docRef = doc(db, 'projects', id);
+        await updateDoc(docRef, {
+            status: 'Rejected',
+            verifiedBy: currentUser.uid, 
+            verifiedAt: new Date()
+        });
+        
+        // Add note indicating rejection
+        await addDoc(collection(db, `projects/${id}/notes`), {
+            content: `Project Rejected/Returned by ${currentUser.displayName}`,
+            authorId: currentUser.uid,
+            authorName: currentUser.displayName || 'Supervisor',
+            type: 'system',
+            createdAt: new Date()
+        });
+
+        // Update local state
+        setProject(prev => ({ ...prev, status: 'Rejected' }));
+        toast.success("Project rejected.");
+    } catch (error) {
+        console.error('Error rejecting project:', error);
+        toast.error("Failed to reject project");
         );
     }
 
@@ -303,23 +367,58 @@ export const LecturerRepositoryDetailPage = () => {
                                     <span className="material-symbols-outlined mr-2">lock</span> 
                                     Internal Lecturer Notes
                                 </h2>
-                                <div className="space-y-4">
-                                    <div className="p-3 bg-white dark:bg-black/20 rounded border border-yellow-100 dark:border-yellow-900/30">
-                                        <p className="text-sm text-text-muted-light dark:text-text-muted-dark">
-                                            No notes available.
-                                        </p>
+                                
+                                {/* Existing Feedback from Project Doc */}
+                                {project.lecturerFeedback && (
+                                    <div className="mb-4 p-4 bg-white dark:bg-black/20 rounded border-l-4 border-yellow-400 dark:border-yellow-600 shadow-sm">
+                                        <div className="flex justify-between items-center mb-2">
+                                            <span className="text-xs font-bold uppercase tracking-wider text-yellow-700 dark:text-yellow-600">Supervisor Feedback</span>
+                                        </div>
+                                        <p className="text-sm text-gray-800 dark:text-gray-200">{project.lecturerFeedback}</p>
                                     </div>
+                                )}
+
+                                {/* Notes List */}
+                                <div className="space-y-3 mb-4 max-h-60 overflow-y-auto pr-2">
+                                    {notes.length === 0 && !project.lecturerFeedback ? (
+                                        <div className="p-3 bg-white dark:bg-black/20 rounded border border-yellow-100 dark:border-yellow-900/30">
+                                            <p className="text-sm text-text-muted-light dark:text-text-muted-dark italic">
+                                                No notes available yet.
+                                            </p>
+                                        </div>
+                                    ) : (
+                                        notes.map(note => (
+                                            <div key={note.id} className={`p-3 rounded border text-sm ${note.type === 'system' ? 'bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700' : 'bg-white dark:bg-black/20 border-yellow-100 dark:border-yellow-900/30'}`}>
+                                                <div className="flex justify-between items-center mb-1">
+                                                    <span className="font-semibold text-gray-900 dark:text-gray-100 text-xs">{note.authorName}</span>
+                                                    <span className="text-[10px] text-gray-500">
+                                                        {note.createdAt?.seconds ? new Date(note.createdAt.seconds * 1000).toLocaleString() : 'Just now'}
+                                                    </span>
+                                                </div>
+                                                <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{note.content}</p>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+
+                                <form onSubmit={handleAddNote} className="space-y-2">
                                     <textarea 
-                                        className="w-full p-2 text-sm border border-border-light dark:border-border-dark rounded-md bg-white dark:bg-black/30 text-text-light dark:text-text-dark focus:ring-yellow-500 focus:border-yellow-500"
-                                        placeholder="Add a private note..."
+                                        className="w-full p-2 text-sm border border-border-light dark:border-border-dark rounded-md bg-white dark:bg-black/30 text-text-light dark:text-text-dark focus:ring-yellow-500 focus:border-yellow-500 outline-none"
+                                        placeholder="Add a note visible to other lecturers..."
                                         rows="2"
+                                        value={newNote}
+                                        onChange={(e) => setNewNote(e.target.value)}
                                     ></textarea>
                                     <div className="flex justify-end">
-                                        <button className="px-3 py-1 bg-yellow-600 hover:bg-yellow-700 text-white text-xs font-medium rounded shadow-sm">
-                                            Save Note
+                                        <button 
+                                            type="submit"
+                                            disabled={!newNote.trim()}
+                                            className="px-3 py-1 bg-yellow-600 hover:bg-yellow-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-medium rounded shadow-sm transition-colors"
+                                        >
+                                            Add Note
                                         </button>
                                     </div>
-                                </div>
+                                </form>
                             </section>
                         </div>
                         

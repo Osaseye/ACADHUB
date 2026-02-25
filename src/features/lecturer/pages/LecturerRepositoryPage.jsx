@@ -1,17 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { Sidebar } from '../../../components/layout/Sidebar';
 import { useSidebar } from '../../../hooks/useSidebar';
+import { useAuth } from '../../../context/AuthContext';
 import { Link } from 'react-router-dom';
 import { db } from '../../../config/firebase';
-import { collection, query, orderBy, onSnapshot, limit, where } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, limit, where, getDocs, documentId } from 'firebase/firestore';
 
 export const LecturerRepositoryPage = () => {
     const { isSidebarCollapsed, toggleSidebar } = useSidebar();
+    const { currentUser, loading: authLoading } = useAuth();
     const [searchTerm, setSearchTerm] = useState('');
     const [projects, setProjects] = useState([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        if (authLoading || !currentUser) return;
+
         // Fetch verified projects only
         const q = query(
             collection(db, 'projects'),
@@ -20,26 +24,68 @@ export const LecturerRepositoryPage = () => {
             limit(50)
         );
 
-        const unsubscribe = onSnapshot(q, (snapshot) => {
+        const unsubscribe = onSnapshot(q, async (snapshot) => {
             const fetchedProjects = snapshot.docs.map(doc => ({
                 id: doc.id,
                 ...doc.data(),
                 description: doc.data().abstract || "No description provided",
-                author: doc.data().authorName || "Unknown Author",
-                institution: doc.data().university || "Unknown Institution",
+                // Store raw data for fallback fetching
+                rawAuthor: doc.data().authorName,
+                rawInstitution: doc.data().university,
+                studentId: doc.data().studentId,
                 updated: doc.data().createdAt?.toDate().toLocaleDateString() || 'Recently',
                 stars: doc.data().likes || 0,
                 degree: "Research" // Default tag
             }));
-            setProjects(fetchedProjects);
-            setLoading(false);
-        }, (error) => {
-            console.error("Error fetching repository:", error);
+            
+            // Identify missing authors or institutions
+            const missingAuthorIds = [...new Set(fetchedProjects
+                .filter(p => !p.rawAuthor || !p.rawInstitution)
+                .filter(p => p.studentId)
+                .map(p => p.studentId))];
+            
+            let userMap = {};
+            if (missingAuthorIds.length > 0) {
+                try {
+                    // Fetch users in batches of 10 (Firestore 'in' limit)
+                    const chunks = [];
+                    for (let i = 0; i < missingAuthorIds.length; i += 10) {
+                        chunks.push(missingAuthorIds.slice(i, i + 10));
+                    }
+
+                    for (const chunk of chunks) {
+                        const usersQ = query(collection(db, "users"), where(documentId(), 'in', chunk));
+                        const userSnaps = await getDocs(usersQ);
+                        userSnaps.forEach(doc => {
+                            userMap[doc.id] = doc.data();
+                        });
+                    }
+                } catch (err) {
+                    console.error("Error fetching missing authors:", err);
+                }
+            }
+
+            // Map final data
+            const finalProjects = fetchedProjects.map(p => {
+                const user = userMap[p.studentId];
+                const fallbackName = user ? (user.displayName || (user.firstName ? `${user.firstName} ${user.lastName}` : "Unknown Student")) : "Unknown Author";
+                const fallbackInst = user ? (user.institution || "Unknown Institution") : "Unknown Institution";
+
+                return {
+                    ...p,
+                    author: p.rawAuthor || fallbackName,
+                    institution: p.rawInstitution || fallbackInst,
+                    // Ensure description isn't undefined if abstract missing
+                    description: p.description || "No description provided"
+                };
+            });
+
+            setProjects(finalProjects);
             setLoading(false);
         });
 
         return () => unsubscribe();
-    }, []);
+    }, [currentUser, authLoading]);
 
      const filteredRepos = projects.filter(repo => 
         (repo.title && repo.title.toLowerCase().includes(searchTerm.toLowerCase())) ||
@@ -91,7 +137,7 @@ export const LecturerRepositoryPage = () => {
 
                     {/* Repo Grid */}
                     <div className="space-y-4">
-                        {loading ? (
+                        {loading || authLoading ? (
                              <div className="text-center py-12">
                                 <span className="text-gray-500">Loading repository...</span>
                              </div>

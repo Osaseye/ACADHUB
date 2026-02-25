@@ -1,13 +1,97 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Sidebar } from '../../../components/layout/Sidebar';
 import { useSidebar } from '../../../hooks/useSidebar';
+import { db } from '../../../config/firebase';
+import { collection, query, where, getDocs, doc, deleteDoc, updateDoc, orderBy } from 'firebase/firestore';
+import { toast } from 'sonner';
 
 export const ContentModerationPage = () => {
     const { isSidebarCollapsed, toggleSidebar } = useSidebar();
     const [activeTab, setActiveTab] = useState('pending');
+    const [reports, setReports] = useState([]);
+    const [loading, setLoading] = useState(true);
 
-    // Mock Data for Reports
-    const reports = [];
+    useEffect(() => {
+        const fetchReports = async () => {
+            try {
+                setLoading(true);
+                const q = query(
+                    collection(db, "reports"), 
+                    // where("status", "==", activeTab), // Optional: filter by status if your schema supports it
+                    orderBy("createdAt", "desc")
+                );
+                
+                const snapshot = await getDocs(q);
+                const fetchedReports = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data(),
+                    // Flatten or default fields for UI
+                    timestamp: doc.data().createdAt?.seconds ? new Date(doc.data().createdAt.seconds * 1000).toLocaleDateString() : 'N/A',
+                    reportedBy: doc.data().reporterName || 'Anonymous',
+                    author: doc.data().offenderName || 'Unknown',
+                    content: doc.data().description || doc.data().reason || 'No details provided',
+                    type: doc.data().type || 'project', // Default to project if missing
+                    severity: doc.data().severity || 'medium',
+                    status: doc.data().status || 'pending'
+                }));
+                
+                // Client-side filter for tab since we might not have 'status' index yet
+                const filtered = fetchedReports.filter(r => r.status === activeTab);
+                setReports(filtered);
+            } catch (error) {
+                console.error("Error fetching reports:", error);
+                // toast.error("Failed to load reports");
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchReports();
+    }, [activeTab]);
+
+    const handleDismiss = async (reportId) => {
+        try {
+            await deleteDoc(doc(db, "reports", reportId));
+            setReports(reports.filter(r => r.id !== reportId));
+            toast.success("Report dismissed");
+        } catch (error) {
+            console.error("Error dismissing report:", error);
+            toast.error("Failed to dismiss report");
+        }
+    };
+
+    const handleResolve = async (reportId) => {
+        try {
+            const reportRef = doc(db, "reports", reportId);
+            await updateDoc(reportRef, { status: 'resolved' });
+            setReports(reports.filter(r => r.id !== reportId));
+            toast.success("Report marked as resolved");
+        } catch (error) {
+            console.error("Error resolving report:", error);
+            toast.error("Failed to update report");
+        }
+    };
+
+    const handleDeleteContent = async (report) => {
+        if (!confirm("Are you sure you want to remove the reported content? This action cannot be undone.")) return;
+
+        try {
+            // Delete the reported item
+            if (report.targetCollection && report.targetId) {
+                await deleteDoc(doc(db, report.targetCollection, report.targetId));
+            }
+            
+            // Mark report as resolved
+            const reportRef = doc(db, "reports", report.id);
+            await updateDoc(reportRef, { status: 'resolved', resolution: 'content_removed' });
+            
+            setReports(reports.filter(r => r.id !== report.id));
+            toast.success("Content removed and report resolved");
+        } catch (error) {
+            console.error("Error removing content:", error);
+            toast.error("Failed to remove content: " + error.message);
+        }
+    };
 
     const getSeverityColor = (severity) => {
         switch(severity) {
@@ -80,7 +164,13 @@ export const ContentModerationPage = () => {
 
                     {/* Content List */}
                     <div className="space-y-4">
-                        {reports.map((item) => (
+                        {loading && (
+                            <div className="text-center py-12">
+                                <span className="material-symbols-outlined text-4xl text-gray-300 dark:text-gray-600 mb-2 animate-spin">refresh</span>
+                                <h3 className="text-lg font-medium text-gray-900 dark:text-white">Loading reports...</h3>
+                            </div>
+                        )}
+                        {!loading && reports.map((item) => (
                             <div key={item.id} className="bg-white dark:bg-[#161B22] border border-gray-200 dark:border-[#30363D] rounded-lg p-6 shadow-sm flex flex-col md:flex-row gap-6">
                                 {/* Left: Type Icon */}
                                 <div className="flex-shrink-0">
@@ -98,11 +188,11 @@ export const ContentModerationPage = () => {
                                 {/* Middle: Content Details */}
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2 mb-2">
-                                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${getSeverityColor(item.severity)}`}>
-                                            {item.severity.toUpperCase()} Priority
+                                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${getSeverityColor(item.severity || 'medium')}`}>
+                                            {(item.severity || 'medium').toUpperCase()} Priority
                                         </span>
                                         <span className="text-xs text-gray-500 dark:text-gray-400 px-2 border-l border-gray-300 dark:border-gray-700">
-                                            Reported {item.timestamp} by {item.reportedBy}
+                                            Reported {item.timestamp} by {item.reportedBy} ({item.reporterEmail || 'N/A'})
                                         </span>
                                     </div>
                                     
@@ -111,7 +201,7 @@ export const ContentModerationPage = () => {
                                     </h3>
                                     
                                     <div className="bg-gray-50 dark:bg-[#0D1117] rounded p-3 border border-gray-100 dark:border-[#30363D] text-sm text-gray-700 dark:text-gray-300 font-mono mb-2">
-                                        "{item.content}"
+                                        {item.content}
                                     </div>
 
                                     <div className="flex items-center text-xs text-gray-500 dark:text-gray-400 gap-4">
@@ -121,31 +211,41 @@ export const ContentModerationPage = () => {
                                         </span>
                                         <span className="flex items-center gap-1">
                                             <span className="material-symbols-outlined text-[14px]">location_on</span>
-                                            Location: {item.location}
+                                            Collection: {item.targetCollection || 'Unknown'}
                                         </span>
                                     </div>
                                 </div>
 
                                 {/* Right: Actions */}
                                 <div className="flex flex-row md:flex-col gap-2 justify-center md:items-end border-t md:border-t-0 md:border-l border-gray-200 dark:border-[#30363D] pt-4 md:pt-0 md:pl-6 mt-2 md:mt-0">
-                                    <button className="flex items-center justify-center gap-2 px-3 py-1.5 bg-white dark:bg-[#21262D] hover:bg-gray-50 dark:hover:bg-[#30363D] text-gray-700 dark:text-gray-300 text-xs font-medium rounded border border-gray-200 dark:border-[#30363D] transition-colors w-full md:w-auto">
+                                    <button 
+                                        onClick={() => window.open(`/project/${item.targetId}`, '_blank')}
+                                        disabled={!item.targetId}
+                                        className="flex items-center justify-center gap-2 px-3 py-1.5 bg-white dark:bg-[#21262D] hover:bg-gray-50 dark:hover:bg-[#30363D] text-gray-700 dark:text-gray-300 text-xs font-medium rounded border border-gray-200 dark:border-[#30363D] transition-colors w-full md:w-auto disabled:opacity-50"
+                                    >
                                         <span className="material-symbols-outlined text-[16px]">visibility</span>
                                         View
                                     </button>
-                                    <button className="flex items-center justify-center gap-2 px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white text-xs font-medium rounded shadow-sm w-full md:w-auto">
+                                    <button 
+                                        onClick={() => handleResolve(item.id)}
+                                        className="flex items-center justify-center gap-2 px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white text-xs font-medium rounded shadow-sm w-full md:w-auto"
+                                    >
                                         <span className="material-symbols-outlined text-[16px]">check</span>
-                                        Keep
+                                        Keep & Resolve
                                     </button>
-                                    <button className="flex items-center justify-center gap-2 px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-medium rounded shadow-sm w-full md:w-auto">
+                                    <button 
+                                        onClick={() => handleDeleteContent(item)}
+                                        className="flex items-center justify-center gap-2 px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-medium rounded shadow-sm w-full md:w-auto"
+                                    >
                                         <span className="material-symbols-outlined text-[16px]">delete</span>
-                                        Remove
+                                        Delete Content
                                     </button>
                                 </div>
                             </div>
                         ))}
 
                         {/* Pagination / Empty State */}
-                        {reports.length === 0 && (
+                        {!loading && reports.length === 0 && (
                             <div className="text-center py-12">
                                 <span className="material-symbols-outlined text-4xl text-gray-300 dark:text-gray-600 mb-2">check_circle</span>
                                 <h3 className="text-lg font-medium text-gray-900 dark:text-white">All caught up!</h3>

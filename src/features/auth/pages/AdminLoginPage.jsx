@@ -1,24 +1,72 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { AuthLayout } from "../layout/AuthLayout";
-import { Input } from "../../../components/ui/Input";
-import { Button } from "../../../components/ui/Button";
+import { useAuth } from "../../../context/AuthContext";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "../../../config/firebase";
 
 export const AdminLoginPage = () => {
   const navigate = useNavigate();
+  const { login, register } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  
+  // Mode: 'login' or 'register'
+  const [isLoginMode, setIsLoginMode] = useState(true);
 
-  const handleSubmit = (e) => {
+  // Form State
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [adminSecret, setAdminSecret] = useState("");
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
-    // Simulate Admin API call
-    setTimeout(() => {
+
+    try {
+        if (isLoginMode) {
+            // LOGIN FLOW
+            const userCredential = await login(email, password);
+            const user = userCredential.user;
+            
+            // Verify Admin Role
+            const docRef = doc(db, "users", user.uid);
+            const docSnap = await getDoc(docRef);
+
+            if (docSnap.exists() && docSnap.data().role === 'admin') {
+                toast.success("Admin Session Started");
+                navigate("/admin/dashboard");
+            } else {
+                toast.error("Access Denied: Not an administrator account.");
+                // Ensure we don't leave a session open for non-admins on this route if needed
+            }
+        } else {
+            // REGISTER FLOW
+            if (adminSecret !== "acadhub-admin-2024") {
+                toast.error("Invalid Security Key");
+                setIsLoading(false);
+                return;
+            }
+
+            // Create user with admin role and skipped onboarding
+            await register(email, password, 'admin', {
+                displayName: displayName,
+                onboardingCompleted: true,
+                verificationStatus: 'verified',
+                department: 'Administration',
+                siteRole: 'super_admin'
+            });
+
+            toast.success("Root Admin Account Created");
+            navigate("/admin/dashboard");
+        }
+    } catch (error) {
+        console.error(error);
+        toast.error(error.message || "Authentication failed");
+    } finally {
         setIsLoading(false);
-        toast.success("Admin Session Started");
-        navigate("/admin/dashboard");
-    }, 1500);
+    }
   };
 
   return (
@@ -76,11 +124,33 @@ export const AdminLoginPage = () => {
                         </span>
                         Admin Portal
                     </div>
-                    <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">Sign in to console</h1>
-                    <p className="text-slate-500 dark:text-slate-400">Please enter your credentials to access the console.</p>
+                    <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">
+                        {isLoginMode ? "Sign in to console" : "Initialize New Admin"}
+                    </h1>
+                    <p className="text-slate-500 dark:text-slate-400">
+                        {isLoginMode ? "Please enter your credentials to access the console." : "Create a root administrative account bypassing standard checks."}
+                    </p>
                 </div>
 
                 <form className="space-y-5" onSubmit={handleSubmit}>
+                    
+                    {!isLoginMode && (
+                        <div className="space-y-1.5">
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300" htmlFor="displayName">
+                                Display Name
+                            </label>
+                            <input 
+                                id="displayName" 
+                                type="text"
+                                value={displayName}
+                                onChange={(e) => setDisplayName(e.target.value)}
+                                placeholder="Admin Name"
+                                className="block w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-shadow"
+                                required={!isLoginMode} 
+                            />
+                        </div>
+                    )}
+
                     <div className="space-y-1.5">
                         <label className="block text-sm font-medium text-slate-700 dark:text-slate-300" htmlFor="adminId">
                             Admin ID / Email
@@ -91,7 +161,9 @@ export const AdminLoginPage = () => {
                             </div>
                             <input 
                                 id="adminId" 
-                                type="text" 
+                                type="email" 
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
                                 placeholder="admin@acadhub.com"
                                 className="block w-full pl-10 pr-3 py-2.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-shadow"
                                 required 
@@ -102,7 +174,7 @@ export const AdminLoginPage = () => {
                     <div className="space-y-1.5">
                          <div className="flex items-center justify-between">
                             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300" htmlFor="password">
-                                Secure Key
+                                {isLoginMode ? "Secure Key" : "Set Password"}
                             </label>
                         </div>
                         <div className="relative rounded-lg shadow-sm">
@@ -112,6 +184,8 @@ export const AdminLoginPage = () => {
                             <input
                                 id="password"
                                 type={showPassword ? "text" : "password"}
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
                                 required
                                 placeholder="••••••••••••"
                                 className="block w-full pl-10 pr-10 py-2.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-shadow"
@@ -128,24 +202,52 @@ export const AdminLoginPage = () => {
                         </div>
                     </div>
 
+                    {!isLoginMode && (
+                        <div className="space-y-1.5 ">
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300" htmlFor="adminSecret">
+                                Master Secret Key
+                            </label>
+                            <input 
+                                id="adminSecret" 
+                                type="password" 
+                                value={adminSecret}
+                                onChange={(e) => setAdminSecret(e.target.value)}
+                                placeholder="Enter secret key..."
+                                className="block w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-indigo-300 dark:border-indigo-800 rounded-lg text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm transition-shadow"
+                                required={!isLoginMode} 
+                            />
+                             <p className="text-[10px] text-slate-500 mt-1">Dev Hint: acadhub-admin-2024</p>
+                        </div>
+                    )}
+
                     {/* Security Notice */}
-                    <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 rounded-lg p-3 flex gap-3 items-start">
-                        <span className="material-symbols-outlined text-amber-600 dark:text-amber-500 text-[18px] mt-0.5 shrink-0">security</span>
-                        <p className="text-xs text-amber-800 dark:text-amber-500 leading-relaxed font-medium">
-                            <strong>Security Notice:</strong> Access restricted to authorized personnel only. All login attempts are monitored and logged.
-                        </p>
-                    </div>
+                    {isLoginMode && (
+                        <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 rounded-lg p-3 flex gap-3 items-start">
+                            <span className="material-symbols-outlined text-amber-600 dark:text-amber-500 text-[18px] mt-0.5 shrink-0">security</span>
+                            <p className="text-xs text-amber-800 dark:text-amber-500 leading-relaxed font-medium">
+                                <strong>Security Notice:</strong> Access restricted to authorized personnel only. All login attempts are monitored and logged.
+                            </p>
+                        </div>
+                    )}
 
                     <button 
                         type="submit" 
                         disabled={isLoading}
                         className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-semibold text-white bg-[#0f66bd] hover:bg-[#0a4a8c] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-600 transition-all disabled:opacity-70 disabled:cursor-not-allowed"
                     >
-                        {isLoading ? "Authenticating..." : "Sign in to Console"}
+                        {isLoading ? "Processing..." : (isLoginMode ? "Sign in to Console" : "Create Admin Account")}
                     </button>
                 </form>
 
-                 <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-800 text-center">
+                 <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-800 text-center space-y-3">
+                    <button 
+                         type="button"
+                         onClick={() => setIsLoginMode(!isLoginMode)}
+                         className="text-sm font-medium text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 transition-colors w-full"
+                    >
+                        {isLoginMode ? "Need to create a Root Admin?" : "Have an account? Login here"}
+                    </button>
+
                     <Link to="/login" className="text-sm font-medium text-slate-500 hover:text-blue-600 dark:text-slate-400 dark:hover:text-white transition-colors flex items-center justify-center gap-1 group">
                         <span className="material-symbols-outlined text-[16px] group-hover:-translate-x-0.5 transition-transform">arrow_back</span>
                         Standard User? Return to main login
