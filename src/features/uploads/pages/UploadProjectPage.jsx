@@ -20,6 +20,10 @@ export const UploadProjectPage = () => {
     const [isLoadingSupervisors, setIsLoadingSupervisors] = useState(true);
     const [existingFileUrl, setExistingFileUrl] = useState(null);
     const [existingFileName, setExistingFileName] = useState(null);
+    
+    // Search State for Supervisors
+    const [supervisorSearch, setSupervisorSearch] = useState('');
+    const [showSupervisorDropdown, setShowSupervisorDropdown] = useState(false);
 
     const isEditing = !!id;
 
@@ -94,6 +98,7 @@ export const UploadProjectPage = () => {
                         keywords: data.keywords || ''
                     });
                     
+                    setSupervisorSearch(data.supervisorName || ''); // Populate search
                     setExistingFileUrl(data.fileUrl);
                     setExistingFileName(data.fileName);
                 } else {
@@ -115,18 +120,31 @@ export const UploadProjectPage = () => {
 
     const handleChange = (e) => {
         const { name, value } = e.target;
-        
-        if (name === 'supervisor' || name === 'supervisorId') {
-            const selectedSupervisor = supervisors.find(s => s.id === value);
-            setFormData(prev => ({ 
-                ...prev, 
-                supervisor: value,
-                supervisorId: value,
-                supervisorName: selectedSupervisor ? (selectedSupervisor.displayName || selectedSupervisor.email) : ''
-            }));
-        } else {
-            setFormData(prev => ({ ...prev, [name]: value }));
-        }
+        setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleSupervisorSearchChange = (e) => {
+        setSupervisorSearch(e.target.value);
+        setShowSupervisorDropdown(true);
+        // Clear previous selection
+        setFormData(prev => ({ 
+            ...prev, 
+            supervisor: '',
+            supervisorId: '',
+            supervisorName: '' 
+        }));
+    };
+
+    const handleSupervisorSelect = (supervisor) => {
+        const name = supervisor.displayName || supervisor.email;
+        setFormData(prev => ({ 
+            ...prev, 
+            supervisor: supervisor.id,
+            supervisorId: supervisor.id,
+            supervisorName: name
+        }));
+        setSupervisorSearch(name);
+        setShowSupervisorDropdown(false);
     };
 
     const handleFileChange = (e) => {
@@ -134,6 +152,11 @@ export const UploadProjectPage = () => {
             setFile(e.target.files[0]);
         }
     };
+    
+    const filteredSupervisors = supervisors.filter(s => 
+        (s.displayName?.toLowerCase() || '').includes(supervisorSearch.toLowerCase()) ||
+        (s.email?.toLowerCase() || '').includes(supervisorSearch.toLowerCase())
+    );
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -315,7 +338,8 @@ export const UploadProjectPage = () => {
                                         <label htmlFor="department" className="block text-sm font-medium text-text-light dark:text-white mb-1">
                                             Department *
                                         </label>
-                                        <select
+                                        <input
+                                            type="text"
                                             id="department"
                                             name="department"
                                             required
@@ -323,16 +347,8 @@ export const UploadProjectPage = () => {
                                             disabled={!!currentUser?.department} // Disable if prefilled from profile
                                             onChange={handleChange}
                                             className="w-full bg-background-light dark:bg-background-dark border border-border-light dark:border-border-dark rounded-md py-2 px-3 text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-shadow disabled:opacity-70 disabled:cursor-not-allowed"
-                                        >
-                                            <option value="">Select Department...</option>
-                                            <option>Computer Science</option>
-                                            <option>Economics</option>
-                                            <option>Engineering</option>
-                                            <option>Agriculture</option>
-                                            <option>Medicine</option>
-                                            <option>Law</option>
-                                            <option>Business Administration</option>
-                                        </select>
+                                            placeholder="Enter your department"
+                                        />
                                     </div>
                                 </div>
 
@@ -377,36 +393,56 @@ export const UploadProjectPage = () => {
                                         />
                                     </div>
                                     
-                                    <div>
+                                    <div className="relative">
                                         <label htmlFor="supervisorId" className="block text-sm font-medium text-text-light dark:text-white mb-1">
                                             Supervisor *
                                         </label>
-                                        <select
-                                            id="supervisorId"
-                                            name="supervisorId"
-                                            required
-                                            value={formData.supervisorId || ""}
-                                            onChange={handleChange}
-                                            disabled={isLoadingSupervisors || supervisors.length === 0}
-                                            className="w-full bg-background-light dark:bg-background-dark border border-border-light dark:border-border-dark rounded-md py-2 px-3 text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-shadow disabled:opacity-50"
-                                        >
-                                            <option value="">
-                                                {isLoadingSupervisors 
-                                                    ? "Loading Supervisors..." 
-                                                    : supervisors.length === 0 
-                                                        ? "No Supervisors Available" 
-                                                        : "Select Supervisor..."
-                                                }
-                                            </option>
-                                            {supervisors.map(supervisor => (
-                                                <option key={supervisor.id} value={supervisor.id}>
-                                                    {supervisor.displayName || supervisor.email}
-                                                </option>
-                                            ))}
-                                        </select>
+                                        <div className="relative">
+                                            <input
+                                                type="text"
+                                                id="supervisorSearch"
+                                                value={supervisorSearch}
+                                                onChange={handleSupervisorSearchChange}
+                                                onFocus={() => setShowSupervisorDropdown(true)}
+                                                onBlur={() => setTimeout(() => setShowSupervisorDropdown(false), 200)} // Delay to allow click
+                                                placeholder="Search supervisor by name..."
+                                                className="w-full bg-background-light dark:bg-background-dark border border-border-light dark:border-border-dark rounded-md py-2 px-3 pr-10 text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-shadow"
+                                            />
+                                            <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400">
+                                                <span className="material-symbols-outlined text-[20px]">search</span>
+                                            </div>
+                                            
+                                            {/* Dropdown Results */}
+                                            {showSupervisorDropdown && (
+                                                <div className="absolute z-10 w-full mt-1 bg-white dark:bg-[#1f242c] border border-border-light dark:border-border-dark rounded-md shadow-lg max-h-60 overflow-y-auto">
+                                                    {isLoadingSupervisors ? (
+                                                        <div className="px-4 py-3 text-sm text-gray-500 text-center">Loading...</div>
+                                                    ) : filteredSupervisors.length > 0 ? (
+                                                        filteredSupervisors.map(supervisor => (
+                                                            <div
+                                                                key={supervisor.id}
+                                                                onClick={() => handleSupervisorSelect(supervisor)}
+                                                                className="px-4 py-2 hover:bg-gray-100 dark:hover:bg-[#30363d] cursor-pointer text-sm text-gray-700 dark:text-gray-200 transition-colors"
+                                                            >
+                                                                <div className="font-medium">{supervisor.displayName || 'Unknown Name'}</div>
+                                                                <div className="text-xs text-gray-500">{supervisor.email} - {supervisor.department || 'General'}</div>
+                                                            </div>
+                                                        ))
+                                                    ) : (
+                                                        <div className="px-4 py-3 text-sm text-gray-500 text-center">No supervisors found.</div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
                                         {supervisors.length === 0 && !isLoadingSupervisors && (
                                             <p className="text-xs text-red-500 mt-1">
                                                 No supervisors available. You cannot submit a project without a supervisor.
+                                            </p>
+                                        )}
+                                        {formData.supervisorId && (
+                                            <p className="text-xs text-green-600 dark:text-green-400 mt-1 flex items-center">
+                                                <span className="material-symbols-outlined text-[14px] mr-1">check_circle</span>
+                                                Selected: {formData.supervisorName}
                                             </p>
                                         )}
                                     </div>

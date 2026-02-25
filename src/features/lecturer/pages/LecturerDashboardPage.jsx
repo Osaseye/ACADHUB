@@ -51,13 +51,23 @@ export const LecturerDashboardPage = () => {
 
                 const totalPending = supervisionPendingSnapshot.data().count + projectReviewSnapshot.data().count;
 
-                // 2. Active Students Count (Accepted Requests)
+                // 2. Active Students Count (Accepted Requests + Verified Projects)
                 const activeQuery = query(
                     requestsRef,
                     where("lecturerId", "==", currentUser.uid),
                     where("status", "==", "approved")
                 );
                 const activeSnapshot = await getCountFromServer(activeQuery);
+
+                const activeProjectsQuery = query(
+                    projectsRef,
+                    where("supervisorId", "==", currentUser.uid),
+                    where("status", "==", "verified")
+                );
+                const activeProjectsSnapshot = await getCountFromServer(activeProjectsQuery);
+                
+                // Combining counts (Note: this might double count if a student has both)
+                const totalActive = activeSnapshot.data().count + activeProjectsSnapshot.data().count;
 
                 // 3. Total Publications Count
                 // projectsRef already declared above if used in block 1. Let's just create a new query.
@@ -71,15 +81,14 @@ export const LecturerDashboardPage = () => {
 
                 setStats({
                     pendingRequests: totalPending,
-                    activeStudents: activeSnapshot.data().count,
+                    activeStudents: totalActive,
                     totalPublications: pubsSnapshot.data().count
                 });
 
-                // 4. Fetch Recent Requests (Both Supervision & Projects)
+                // 4. Fetch Recent Requests (Both Supervision & Projects) -> RENAMED TO CONTEXT: HISTORY
                 const recentQuery = query(
                     requestsRef,
                     where("lecturerId", "==", currentUser.uid),
-                    where("status", "==", "pending"),
                     orderBy("createdAt", "desc"),
                     limit(5)
                 );
@@ -93,7 +102,6 @@ export const LecturerDashboardPage = () => {
                 const recentProjectQuery = query(
                     projectsRef,
                     where("supervisorId", "==", currentUser.uid),
-                    where("status", "==", "Pending"),
                     limit(5)
                 );
                 const recentProjectDocs = await getDocs(recentProjectQuery);
@@ -102,7 +110,6 @@ export const LecturerDashboardPage = () => {
                     ...doc.data(),
                     type: 'project_review',
                     studentName: doc.data().studentName || 'Unknown Student',
-                    // Map title to 'topic' property for consistent display in list if needed
                     topic: `Project Review: ${doc.data().title}` 
                 }));
 
@@ -234,21 +241,31 @@ export const LecturerDashboardPage = () => {
                                                     {(request.studentName || 'S').charAt(0)}
                                                 </div>
                                                 <div>
-                                                    <h4 className="text-sm font-semibold text-text-light dark:text-white">
+                                                    <h4 className="text-sm font-semibold text-text-light dark:text-white flex items-center gap-2">
                                                         {request.studentName || 'Student'} 
+                                                        {/* Status Badge */}
+                                                        <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded border ${
+                                                            (request.status === 'approved' || request.status === 'Approved') ? 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30' :
+                                                            (request.status === 'rejected' || request.status === 'Rejected') ? 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30' :
+                                                            'bg-yellow-100 text-yellow-700 border-yellow-200 dark:bg-yellow-900/30'
+                                                        }`}>
+                                                            {request.status || 'Pending'}
+                                                        </span>
+                                                    </h4>
+                                                    <div className="flex items-center gap-2 mt-0.5">
                                                         {request.type === 'project_review' ? (
-                                                            <span className="ml-2 text-xs font-normal px-2 py-0.5 rounded bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-200">
-                                                                Project Review
+                                                            <span className="text-xs font-normal px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-200">
+                                                                Project
                                                             </span>
                                                         ) : (
-                                                            <span className="text-xs font-normal text-text-muted-light dark:text-text-muted-dark ml-2">
-                                                                ({request.degree || 'B.Sc'})
+                                                            <span className="text-xs font-normal text-text-muted-light dark:text-text-muted-dark bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">
+                                                                {request.degree || 'B.Sc'} Request
                                                             </span>
                                                         )}
-                                                    </h4>
-                                                    <p className="text-xs text-text-muted-light dark:text-text-muted-dark line-clamp-1">
-                                                        {request.type === 'project_review' ? request.topic : `Topic: ${request.proposedTopic || 'No topic specified'}`}
-                                                    </p>
+                                                        <p className="text-xs text-text-muted-light dark:text-text-muted-dark line-clamp-1 truncate max-w-[200px]">
+                                                            {request.type === 'project_review' ? request.topic : `Topic: ${request.proposedTopic || 'No topic'}`}
+                                                        </p>
+                                                    </div>
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-2">

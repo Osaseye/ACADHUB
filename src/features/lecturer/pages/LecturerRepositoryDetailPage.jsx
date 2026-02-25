@@ -190,10 +190,10 @@ const handleReject = async () => {
     } catch (error) {
         console.error('Error rejecting project:', error);
         toast.error("Failed to reject project");
-        );
     }
+};
 
-    if (!project) {
+if (!project) {
         return (
             <div className="flex h-screen items-center justify-center bg-background-light dark:bg-background-dark text-text-light dark:text-white">
                  <div className="text-center">

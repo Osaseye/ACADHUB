@@ -16,16 +16,19 @@ export const SupervisionManagementPage = () => {
     const [requests, setRequests] = useState([]);
     const [projectReviews, setProjectReviews] = useState([]);
     const [activeStudents, setActiveStudents] = useState([]);
+    // Helper states for merging active students list
+    const [activeRequestsList, setActiveRequestsList] = useState([]);
+    const [activeProjectsList, setActiveProjectsList] = useState([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         if (!currentUser) return;
 
-        // 1. Listen for Pending Supervision Requests
+        // 1. Listen for Supervision Requests History (All Statuses)
         const qRequests = query(
             collection(db, 'supervision_requests'),
             where('lecturerId', '==', currentUser.uid),
-            where('status', '==', 'pending'),
+            // Removed status filter to show history
             orderBy('createdAt', 'desc')
         );
 
@@ -36,7 +39,6 @@ export const SupervisionManagementPage = () => {
                 date: doc.data().createdAt?.toDate().toLocaleDateString() || 'Recently'
             }));
             setRequests(reqs);
-            // Don't set loading false yet, wait for all
         }, (error) => {
             console.error("Error fetching requests:", error);
         });
@@ -69,30 +71,81 @@ export const SupervisionManagementPage = () => {
             setLoading(false);
         });
 
-        // 3. Listen for Active Students (Approved Requests)
-        const qActive = query(
+        // 3. Listen for Active Students (Approved Requests & Verified Projects)
+        const qActiveRequests = query(
             collection(db, 'supervision_requests'),
             where('lecturerId', '==', currentUser.uid),
             where('status', '==', 'approved')
         );
 
-        const unsubscribeActive = onSnapshot(qActive, (snapshot) => {
-            const active = snapshot.docs.map(doc => ({
+        const qActiveProjects = query(
+            collection(db, 'projects'),
+            where('supervisorId', '==', currentUser.uid),
+            where('status', '==', 'verified')
+        );
+
+        // We need to merge these two streams, but onSnapshot makes it tricky to merge effectively without complex state management.
+        // For simplicity in this context, we'll listen to both and merge in state setter or effect.
+        // But separate listeners might overwrite state.
+        // Strategy: Use two state variables activeReqs and activeProjs, and merge them in a useEffect.
+        
+        // Wait, I can just use one listener for Requests, and another for Projects, and merge them?
+        // Let's refactor slightly to precise Active Students list.
+        // Actually, let's keep it simple. Students from approved requests are definitely active.
+        // Students with processed projects might be alumni? "become part of his active students".
+        // Let's just create a combined list.
+        
+        const unsubscribeActiveRequests = onSnapshot(qActiveRequests, (snapshot) => {
+             const reqs = snapshot.docs.map(doc => ({
                 id: doc.id,
                 ...doc.data(),
                 name: doc.data().studentName,
-                progress: doc.data().progress || 0, // Fallback if not tracked yet
-                lastMeet: doc.data().lastMeet?.toDate().toLocaleDateString() || 'Not scheduled'
+                topic: doc.data().topic,
+                progress: doc.data().progress || 0,
+                lastMeet: doc.data().lastMeet?.toDate().toLocaleDateString() || 'Not scheduled',
+                source: 'request'
             }));
-            setActiveStudents(active);
+            setActiveRequestsList(reqs);
+        });
+
+        const unsubscribeActiveProjects = onSnapshot(qActiveProjects, (snapshot) => {
+            const projs = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data(),
+                name: doc.data().studentName,
+                topic: doc.data().title,
+                progress: 100, // Completed/Verified
+                lastMeet: doc.data().updatedAt?.toDate().toLocaleDateString() || 'Completed',
+                source: 'project'
+            }));
+            setActiveProjectsList(projs);
         });
 
         return () => {
             unsubscribeRequests();
             unsubscribeReviews();
-            unsubscribeActive();
+            unsubscribeActiveRequests();
+            unsubscribeActiveProjects();
         };
     }, [currentUser]);
+
+
+    // Merge active lists (Requests + Projects)
+    useEffect(() => {
+        // Simple deduplication by studentId/name could be added if needed
+        // Assuming studentId is available.
+        const combined = [...activeRequestsList];
+        
+        activeProjectsList.forEach(proj => {
+            // Check if student already exists from requests
+            const exists = combined.find(s => s.studentId === proj.studentId || s.name === proj.name);
+            if (!exists) {
+                combined.push(proj);
+            }
+        });
+        
+        setActiveStudents(combined);
+    }, [activeRequestsList, activeProjectsList]);
 
     // Auto-switch tab if only project reviews exist
     useEffect(() => {
@@ -120,8 +173,7 @@ export const SupervisionManagementPage = () => {
                                 onClick={() => setActiveTab('requests')}
                                 className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors whitespace-nowrap ${activeTab === 'requests' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
                             >
-                                Supervision Requests 
-                                {requests.length > 0 && <span className="ml-2 bg-red-100 text-red-600 py-0.5 px-2 rounded-full text-xs">{requests.length}</span>}
+                                History
                             </button>
                             <button
                                 onClick={() => setActiveTab('reviews')}
@@ -164,6 +216,13 @@ export const SupervisionManagementPage = () => {
                                                         {req.degree} Student
                                                     </span>
                                                     <span className="text-xs text-gray-500">{req.date}</span>
+                                                    <span className={`ml-2 px-2 py-0.5 rounded text-xs font-medium border uppercase ${
+                                                        (req.status === 'approved' || req.status === 'Approved') ? 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30' :
+                                                        (req.status === 'rejected' || req.status === 'Rejected') ? 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30' :
+                                                        'bg-yellow-100 text-yellow-700 border-yellow-200 dark:bg-yellow-900/30'
+                                                    }`}>
+                                                        {req.status || 'Pending'}
+                                                    </span>
                                                 </div>
                                                 <p className="text-sm text-gray-600 dark:text-gray-300 mb-1"><span className="font-semibold">Matric No:</span> {req.matricNo}</p>
                                                 <p className="text-sm text-gray-600 dark:text-gray-300 mb-3"><span className="font-semibold">Target Topic:</span> {req.topic}</p>
