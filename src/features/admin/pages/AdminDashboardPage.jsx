@@ -189,6 +189,21 @@ export const AdminDashboardPage = () => {
         }
     };
 
+    const handleSeedData = async () => {
+        if (!window.confirm("This will add 250 random mock projects to the database. Proceed?")) return;
+        try {
+            setLoading(true);
+            const { generateMockProjects } = await import('../../../utils/seeder');
+            await generateMockProjects(db, 250);
+            toast.success("Mock data seeded successfully! Refresh to see changes.");
+        } catch (error) {
+            console.error(error);
+            toast.error("Failed to seed data");
+        } finally {
+            setLoading(false);
+        }
+    };
+
     if (authLoading) {
          return <div className="flex h-screen items-center justify-center bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark">Loading...</div>;
     }
@@ -197,7 +212,7 @@ export const AdminDashboardPage = () => {
         <div className="flex h-screen overflow-hidden bg-[#F3F4F6] dark:bg-[#0D1117] text-gray-900 dark:text-gray-300 font-sans transition-colors duration-200">
             <Sidebar 
                 isCollapsed={isSidebarCollapsed} 
-                toggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)} 
+                toggleSidebar={toggleSidebar} 
                 role="admin"
             />
 
@@ -208,8 +223,17 @@ export const AdminDashboardPage = () => {
                     <div className="flex justify-between items-center mb-6">
                         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">System Dashboard</h1>
                         
-                        <div className="text-sm text-gray-500">
-                             Last updated: {new Date().toLocaleTimeString()}
+                        <div className="flex items-center gap-4">
+                            <button 
+                                onClick={handleSeedData}
+                                disabled={loading}
+                                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg disabled:opacity-50 transition-colors"
+                            >
+                                Seed Mock Projects
+                            </button>
+                            <div className="text-sm text-gray-500">
+                                Last updated: {new Date().toLocaleTimeString()}
+                            </div>
                         </div>
                     </div>
 

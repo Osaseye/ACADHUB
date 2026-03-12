@@ -73,8 +73,21 @@ export const RepositoryPage = () => {
     const filteredProjects = projects.filter(project => {
         const matchesSearch = (project.title?.toLowerCase() || '').includes(searchTerm.toLowerCase()) || 
                               (project.abstract?.toLowerCase() || '').includes(searchTerm.toLowerCase());
-        const matchesDepartment = selectedDepartment === 'All' || project.department === selectedDepartment;
-        const matchesDegree = selectedDegree.length === 0 || selectedDegree.includes(project.degree);
+        
+        // Case-insensitive department match to handle "Computer Science" vs "computer science"
+        const matchesDepartment = selectedDepartment === 'All' || 
+            (project.department || '').toLowerCase() === selectedDepartment.toLowerCase();
+        
+        // Map "BSc Project" to "BSc" for filtering
+        const getDegreeType = (typeStr = '') => {
+            if (typeStr.includes('BSc')) return 'BSc';
+            if (typeStr.includes('MSc') || typeStr.includes('Master')) return 'MSc';
+            if (typeStr.includes('PhD') || typeStr.includes('Doctor')) return 'PhD';
+            return 'Other';
+        };
+        const projDegree = getDegreeType(project.type || project.degree);
+
+        const matchesDegree = selectedDegree.length === 0 || selectedDegree.includes(projDegree);
 
         return matchesSearch && matchesDepartment && matchesDegree;
     });
@@ -138,13 +151,12 @@ export const RepositoryPage = () => {
         }
     };
 
-    const getBadgeStyle = (degree) => {
-        switch(degree) {
-            case 'PhD': return "bg-[#fff8c5] dark:bg-yellow-900/20 text-[#9a6700] dark:text-yellow-500 border border-yellow-200 dark:border-yellow-700/50";
-            case 'MSc': return "bg-[#dafbe1] dark:bg-green-900/20 text-[#1a7f37] dark:text-green-500 border border-green-200 dark:border-green-700/50";
-            case 'BSc': return "bg-[#ddf4ff] dark:bg-blue-900/20 text-[#0969da] dark:text-blue-500 border border-blue-200 dark:border-blue-700/50";
-            default: return "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700";
-        }
+    const getBadgeStyle = (degreeStr) => {
+        const type = degreeStr || '';
+        if (type.includes('PhD')) return "bg-[#fff8c5] dark:bg-yellow-900/20 text-[#9a6700] dark:text-yellow-500 border border-yellow-200 dark:border-yellow-700/50";
+        if (type.includes('MSc') || type.includes('Master')) return "bg-[#dafbe1] dark:bg-green-900/20 text-[#1a7f37] dark:text-green-500 border border-green-200 dark:border-green-700/50";
+        if (type.includes('BSc')) return "bg-[#ddf4ff] dark:bg-blue-900/20 text-[#0969da] dark:text-blue-500 border border-blue-200 dark:border-blue-700/50";
+        return "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700";
     };
 
     return (
@@ -292,8 +304,8 @@ export const RepositoryPage = () => {
                                                     <h3 className="text-base font-semibold">
                                                         <Link to={`/repository/${repo.id}`} className="text-secondary hover:underline break-all cursor-pointer">{repo.title}</Link>
                                                     </h3>
-                                                    <span className={`${getBadgeStyle(repo.degree)} text-xs font-medium px-2 py-0.5 rounded-full border`}>
-                                                        {repo.degree}
+                                                    <span className={`${getBadgeStyle(repo.type || repo.degree)} text-xs font-medium px-2 py-0.5 rounded-full border`}>
+                                                        {repo.type || repo.degree || 'Research'}
                                                     </span>
                                                 </div>
                                                 <p className="text-sm text-text-muted-light dark:text-text-muted-dark mb-3 line-clamp-2 max-w-3xl">
@@ -334,37 +346,41 @@ export const RepositoryPage = () => {
                         </div>
 
                         {/* Pagination */}
-                        <div className="flex items-center justify-center gap-2 mt-8">
-                            <button 
-                                onClick={() => handlePageChange(currentPage - 1)}
-                                disabled={currentPage === 1}
-                                className="flex items-center gap-1 px-3 py-1 text-sm text-secondary disabled:text-text-muted-light dark:disabled:text-text-muted-dark disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors"
-                            >
-                                <span className="material-symbols-outlined text-base">chevron_left</span> Previous
-                            </button>
-                            
-                            {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
-                                <button
-                                    key={page}
-                                    onClick={() => handlePageChange(page)}
-                                    className={`px-3 py-1 text-sm rounded-md font-medium transition-colors ${
-                                        currentPage === page
-                                            ? "bg-primary text-white shadow-sm"
-                                            : "text-text-light dark:text-white hover:bg-gray-100 dark:hover:bg-gray-800"
-                                    }`}
+                        {totalPages > 1 && (
+                            <div className="flex items-center justify-center gap-2 mt-8 overflow-x-auto pb-2 px-2 custom-scrollbar">
+                                <button 
+                                    onClick={() => handlePageChange(currentPage - 1)}
+                                    disabled={currentPage === 1}
+                                    className="flex items-center gap-1 px-3 py-1 text-sm text-secondary disabled:text-text-muted-light dark:disabled:text-text-muted-dark disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors whitespace-nowrap flex-shrink-0"
                                 >
-                                    {page}
+                                    <span className="material-symbols-outlined text-base">chevron_left</span> Prev
                                 </button>
-                            ))}
+                                
+                                <div className="flex items-center gap-1 overflow-x-auto custom-scrollbar flex-nowrap hide-scroll-arrows">
+                                    {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                                        <button
+                                            key={page}
+                                            onClick={() => handlePageChange(page)}
+                                            className={`px-3 py-1 text-sm rounded-md font-medium transition-colors flex-shrink-0 ${
+                                                currentPage === page
+                                                    ? "bg-primary text-white shadow-sm"
+                                                    : "text-text-light dark:text-white hover:bg-gray-100 dark:hover:bg-gray-800"
+                                            }`}
+                                        >
+                                            {page}
+                                        </button>
+                                    ))}
+                                </div>
 
-                            <button 
-                                onClick={() => handlePageChange(currentPage + 1)}
-                                disabled={currentPage === totalPages}
-                                className="flex items-center gap-1 px-3 py-1 text-sm text-secondary hover:text-blue-700 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors disabled:text-text-muted-light dark:disabled:text-text-muted-dark disabled:cursor-not-allowed"
-                            >
-                                Next <span className="material-symbols-outlined text-base">chevron_right</span>
-                            </button>
-                        </div>
+                                <button 
+                                    onClick={() => handlePageChange(currentPage + 1)}
+                                    disabled={currentPage === totalPages}
+                                    className="flex items-center gap-1 px-3 py-1 text-sm text-secondary hover:text-blue-700 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors disabled:text-text-muted-light dark:disabled:text-text-muted-dark disabled:cursor-not-allowed whitespace-nowrap flex-shrink-0"
+                                >
+                                    Next <span className="material-symbols-outlined text-base">chevron_right</span>
+                                </button>
+                            </div>
+                        )}
                     </main>
                 </div>
             </main>

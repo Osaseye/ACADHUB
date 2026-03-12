@@ -13,6 +13,8 @@ export const VerificationRequestsPage = () => {
     const [selectedRequest, setSelectedRequest] = useState(null); 
     const [requests, setRequests] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [rejectionReason, setRejectionReason] = useState("");
+    const [showRejectInput, setShowRejectInput] = useState(false);
 
     useEffect(() => {
         const fetchRequests = async () => {
@@ -52,12 +54,15 @@ export const VerificationRequestsPage = () => {
             const userRef = doc(db, "users", id);
             await updateDoc(userRef, {
                 verificationStatus: 'verified',
-                isVerified: true
+                isVerified: true,
+                rejectionReason: null // clear if any
             });
             
             toast.success("Lecturer Approved successfully");
             setRequests(requests.filter(r => r.id !== id));
             setSelectedRequest(null);
+            setShowRejectInput(false);
+            setRejectionReason("");
         } catch (error) {
             console.error("Error approving lecturer:", error);
             toast.error("Failed to approve lecturer.");
@@ -65,16 +70,23 @@ export const VerificationRequestsPage = () => {
     };
 
     const handleReject = async (id) => {
+        if (!rejectionReason.trim()) {
+            toast.error("Please provide a reason for rejection.");
+            return;
+        }
         try {
             const userRef = doc(db, "users", id);
             await updateDoc(userRef, {
                 verificationStatus: 'rejected',
-                isVerified: false
+                isVerified: false,
+                rejectionReason: rejectionReason.trim()
             });
             
             toast.error("Application Rejected");
             setRequests(requests.filter(r => r.id !== id));
             setSelectedRequest(null);
+            setShowRejectInput(false);
+            setRejectionReason("");
         } catch (error) {
             console.error("Error rejecting lecturer:", error);
             toast.error("Failed to reject application.");
@@ -167,7 +179,7 @@ export const VerificationRequestsPage = () => {
                             <div className="bg-white dark:bg-slate-800 rounded-xl w-full max-w-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
                                 <div className="p-6 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
                                     <h3 className="text-xl font-bold text-slate-900 dark:text-white">Verify Credential</h3>
-                                    <button onClick={() => setSelectedRequest(null)} className="text-slate-400 hover:text-slate-600">
+                                    <button onClick={() => { setSelectedRequest(null); setShowRejectInput(false); setRejectionReason(""); }} className="text-slate-400 hover:text-slate-600">
                                         <span className="material-symbols-outlined">close</span>
                                     </button>
                                 </div>
@@ -211,19 +223,47 @@ export const VerificationRequestsPage = () => {
                                         </p>
                                     </div>
                                 </div>
-                                <div className="p-6 bg-slate-50 dark:bg-slate-900/50 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-3">
-                                    <button 
-                                        onClick={() => handleReject(selectedRequest.id)}
-                                        className="px-4 py-2 rounded-lg text-red-600 font-medium hover:bg-red-50 dark:hover:bg-red-900/20 text-sm"
-                                    >
-                                        Reject Application
-                                    </button>
-                                    <button 
-                                        onClick={() => handleApprove(selectedRequest.id)}
-                                        className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-md"
-                                    >
-                                        Approve & Verify
-                                    </button>
+                                <div className="p-6 bg-slate-50 dark:bg-slate-900/50 border-t border-slate-200 dark:border-slate-700 flex flex-col gap-4">
+                                    {showRejectInput ? (
+                                        <div className="w-full space-y-3">
+                                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Reason for Rejection</label>
+                                            <textarea
+                                                value={rejectionReason}
+                                                onChange={(e) => setRejectionReason(e.target.value)}
+                                                placeholder="Provide a reason for rejecting this application..."
+                                                className="w-full px-4 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-slate-900 dark:text-white transition-all text-sm min-h-[80px]"
+                                            />
+                                            <div className="flex justify-end gap-3 pt-2">
+                                                <button 
+                                                    onClick={() => { setShowRejectInput(false); setRejectionReason(""); }}
+                                                    className="px-4 py-2 rounded-lg text-slate-600 font-medium hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 text-sm"
+                                                >
+                                                    Cancel
+                                                </button>
+                                                <button 
+                                                    onClick={() => handleReject(selectedRequest.id)}
+                                                    className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white font-bold text-sm shadow-md"
+                                                >
+                                                    Confirm Rejection
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="flex justify-end gap-3 flex-wrap">
+                                            <button 
+                                                onClick={() => setShowRejectInput(true)}
+                                                className="px-4 py-2 rounded-lg text-red-600 font-medium hover:bg-red-50 dark:hover:bg-red-900/20 text-sm"
+                                            >
+                                                Reject Application
+                                            </button>
+                                            <button 
+                                                onClick={() => handleApprove(selectedRequest.id)}
+                                                className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-md"
+                                            >
+                                                Approve & Verify
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </div>

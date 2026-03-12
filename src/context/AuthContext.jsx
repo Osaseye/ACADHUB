@@ -18,6 +18,21 @@ export const AuthProvider = ({ children }) => {
     const [userRole, setUserRole] = useState(null);
     const [loading, setLoading] = useState(true);
 
+    const refreshUser = async () => {
+        if (!auth.currentUser) return;
+        const userDocRef = doc(db, "users", auth.currentUser.uid);
+        const userDocSnap = await getDoc(userDocRef);
+        
+        let userData = {};
+        if (userDocSnap.exists()) {
+            userData = userDocSnap.data();
+        }
+
+        const updatedUser = Object.assign({}, auth.currentUser, userData);
+        setCurrentUser(updatedUser);
+        setUserRole(userData.role);
+    };
+
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
             if (user) {
@@ -31,10 +46,9 @@ export const AuthProvider = ({ children }) => {
                 }
 
                 // Merge Firestore data into the user object
-                // We use Object.assign to modify the user object in place to preserve methods
-                Object.assign(user, userData);
+                const combinedUser = Object.assign({}, user, userData);
                 
-                setCurrentUser(user);
+                setCurrentUser(combinedUser);
                 setUserRole(userData.role);
             } else {
                 setCurrentUser(null);
@@ -50,29 +64,47 @@ export const AuthProvider = ({ children }) => {
         const res = await createUserWithEmailAndPassword(auth, email, password);
         const user = res.user;
         
-        // Update user profile with displayName
         if (additionalData?.displayName) {
             await updateProfile(user, {
                 displayName: additionalData.displayName
             });
-            // Force update local state to reflect changes immediately
-            setCurrentUser({ ...user });
         }
         
-        // Create user document in Firestore
-        await setDoc(doc(db, "users", user.uid), {
+        const userData = {
             uid: user.uid,
             email,
             role,
             createdAt: new Date(),
             ...additionalData,
-        });
+        };
+        
+        await setDoc(doc(db, "users", user.uid), userData);
 
-        return user;
+        const combinedUser = Object.assign({}, user, userData);
+        setCurrentUser(combinedUser);
+        setUserRole(role);
+
+        return combinedUser;
     };
 
-    const login = (email, password) => {
-        return signInWithEmailAndPassword(auth, email, password);
+    const login = async (email, password) => {
+        const res = await signInWithEmailAndPassword(auth, email, password);
+        const user = res.user;
+
+        // Fetch user role from Firestore
+        const userDocRef = doc(db, "users", user.uid);
+        const userDocSnap = await getDoc(userDocRef);
+        
+        let userData = {};
+        if (userDocSnap.exists()) {
+            userData = userDocSnap.data();
+        }
+
+        const combinedUser = Object.assign({}, user, userData);
+        setCurrentUser(combinedUser);
+        setUserRole(userData.role);
+        
+        return res;
     };
 
     const logout = () => {
@@ -85,6 +117,7 @@ export const AuthProvider = ({ children }) => {
         register,
         login,
         logout,
+        refreshUser,
         loading
     };
 

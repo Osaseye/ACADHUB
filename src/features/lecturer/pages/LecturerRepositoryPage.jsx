@@ -10,6 +10,7 @@ export const LecturerRepositoryPage = () => {
     const { isSidebarCollapsed, toggleSidebar } = useSidebar();
     const { currentUser, loading: authLoading } = useAuth();
     const [searchTerm, setSearchTerm] = useState('');
+    const [activeFilter, setActiveFilter] = useState('All Research');
     const [projects, setProjects] = useState([]);
     const [loading, setLoading] = useState(true);
 
@@ -87,18 +88,33 @@ export const LecturerRepositoryPage = () => {
         return () => unsubscribe();
     }, [currentUser, authLoading]);
 
-     const filteredRepos = projects.filter(repo => 
-        (repo.title && repo.title.toLowerCase().includes(searchTerm.toLowerCase())) ||
+     const filteredRepos = projects.filter(repo => {
+        const matchesSearch = (repo.title && repo.title.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (repo.description && repo.description.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (repo.author && repo.author.toLowerCase().includes(searchTerm.toLowerCase()))
-    );
+        (repo.author && repo.author.toLowerCase().includes(searchTerm.toLowerCase()));
+
+        let matchesFilter = true;
+        const typeStr = (repo.type || '').toLowerCase();
+        const degreeStr = (repo.degree || '').toLowerCase();
+
+        if (activeFilter === 'Theses & Dissertations') {
+            matchesFilter = typeStr.includes('phd') || typeStr.includes('msc') || typeStr.includes('thesis') || typeStr.includes('dissertation') || degreeStr.includes('phd') || degreeStr.includes('msc');
+        } else if (activeFilter === 'Faculty Publications') {
+            matchesFilter = typeStr.includes('faculty') || typeStr.includes('publication') || typeStr.includes('journal') || degreeStr.includes('faculty');
+        } else if (activeFilter === 'Grant Proposals') {
+            matchesFilter = typeStr.includes('grant') || typeStr.includes('proposal') || degreeStr.includes('grant');
+        } else if (activeFilter === 'BSc Projects') {
+            matchesFilter = typeStr.includes('bsc') || degreeStr.includes('bsc') || typeStr.includes('bachelor');
+        }
+
+        return matchesSearch && matchesFilter;
+    });
 
     return (
         <div className="flex h-screen overflow-hidden bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark font-sans transition-colors duration-200">
             <Sidebar 
                 isCollapsed={isSidebarCollapsed} 
                 toggleSidebar={toggleSidebar} 
-                role="lecturer"
             />
 
             <main className="flex-1 overflow-y-auto bg-background-light dark:bg-background-dark p-4 sm:p-8">
@@ -127,12 +143,21 @@ export const LecturerRepositoryPage = () => {
                         </div>
                     </div>
 
-                     {/* Filters (Lecturer specific?) */}
+                     {/* Filters (Lecturer specific) */}
                      <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
-                        <button className="px-4 py-1.5 rounded-full bg-primary text-white text-sm font-medium whitespace-nowrap">All Research</button>
-                        <button className="px-4 py-1.5 rounded-full bg-white dark:bg-surface-dark border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 text-sm font-medium whitespace-nowrap hover:bg-gray-50 dark:hover:bg-gray-700">Theses & Dissertations</button>
-                        <button className="px-4 py-1.5 rounded-full bg-white dark:bg-surface-dark border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 text-sm font-medium whitespace-nowrap hover:bg-gray-50 dark:hover:bg-gray-700">Faculty Publications</button>
-                        <button className="px-4 py-1.5 rounded-full bg-white dark:bg-surface-dark border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 text-sm font-medium whitespace-nowrap hover:bg-gray-50 dark:hover:bg-gray-700">Grant Proposals</button>
+                        {['All Research', 'Theses & Dissertations', 'BSc Projects', 'Faculty Publications', 'Grant Proposals'].map(filterOption => (
+                            <button
+                                key={filterOption}
+                                onClick={() => setActiveFilter(filterOption)}
+                                className={`px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
+                                    activeFilter === filterOption
+                                        ? 'bg-primary text-white'
+                                        : 'bg-white dark:bg-surface-dark border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                                }`}
+                            >
+                                {filterOption}
+                            </button>
+                        ))}
                     </div>
 
                     {/* Repo Grid */}

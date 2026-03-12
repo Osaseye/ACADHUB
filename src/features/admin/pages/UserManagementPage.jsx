@@ -28,8 +28,9 @@ export const UserManagementPage = () => {
                         ? new Date(doc.data().createdAt.seconds * 1000).toLocaleDateString()
                         : 'N/A',
                     department: doc.data().department || 'N/A',
-                    status: doc.data().status || 'active'
-                }));
+                    status: doc.data().status || 'active',
+                    verificationStatus: doc.data().verificationStatus
+                })).filter(u => !(u.role === 'lecturer' && u.verificationStatus !== 'verified'));
                 setUsers(usersList);
             } catch (error) {
                 console.error("Error fetching users:", error);

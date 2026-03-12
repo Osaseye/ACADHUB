@@ -15,7 +15,7 @@ const STEP_PREFERENCES = 3;
 export const LecturerOnboardingPage = () => {
     const navigate = useNavigate();
     const location = useLocation();
-    const { currentUser } = useAuth();
+    const { currentUser, refreshUser } = useAuth();
     const [currentStep, setCurrentStep] = useState(STEP_PROFILE);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [verificationFile, setVerificationFile] = useState(null);
@@ -142,6 +142,11 @@ export const LecturerOnboardingPage = () => {
                 };
 
                 await updateDoc(userRef, dataToUpdate);
+                
+                // Force AuthContext to fetch the latest fields before routing
+                if (refreshUser) {
+                    await refreshUser();
+                }
 
                 toast.success("Profile setup complete! Welcome aboard.");
                 setTimeout(() => navigate("/lecturer/dashboard"), 1500);

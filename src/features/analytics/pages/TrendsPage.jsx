@@ -295,39 +295,57 @@ export const TrendsPage = () => {
                     </div>
 
                     {/* KPI Cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <div className="bg-surface-light dark:bg-surface-dark p-6 rounded-xl border border-border-light dark:border-border-dark shadow-sm flex items-start justify-between">
-                            <div>
-                                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Top Trending Topic</p>
-                                <h3 className="text-2xl font-bold text-gray-900 dark:text-white mt-2 capitalize">{stats.topTopic}</h3>
-                                <p className="text-sm text-text-muted-light dark:text-text-muted-dark mt-1 flex items-center font-medium">
-                                    Derived from {stats.totalProjects} projects
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+                        <div className="bg-gradient-to-br from-primary to-secondary text-white p-6 rounded-xl shadow-md flex items-start justify-between relative overflow-hidden">
+                            <div className="absolute -right-4 -top-4 opacity-20">
+                                <span className="material-symbols-outlined text-[100px]">library_books</span>
+                            </div>
+                            <div className="relative z-10">
+                                <p className="text-xs font-semibold text-white/80 uppercase tracking-wider">Total Projects</p>
+                                <h3 className="text-3xl font-bold text-white mt-1">{loading ? '-' : stats.totalProjects}</h3>
+                                <p className="text-sm text-white/70 mt-2 flex items-center font-medium">
+                                    <span className="material-symbols-outlined text-[16px] mr-1">check_circle</span>
+                                    Verified only
                                 </p>
                             </div>
-                            <div className="p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg text-primary">
+                        </div>
+
+                        <div className="bg-surface-light dark:bg-surface-dark p-6 rounded-xl border border-border-light dark:border-border-dark shadow-sm flex items-start justify-between transition-transform hover:-translate-y-1 duration-200">
+                            <div>
+                                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Top Trending Topic</p>
+                                <h3 className="text-2xl font-bold text-gray-900 dark:text-white mt-2 capitalize truncate max-w-[150px]">{stats.topTopic}</h3>
+                                <p className="text-sm text-text-muted-light dark:text-text-muted-dark mt-1 flex items-center font-medium">
+                                   Derived from activity
+                                </p>
+                            </div>
+                            <div className="p-3 bg-blue-50 dark:bg-blue-900/30 rounded-full text-blue-600 dark:text-blue-400 shadow-inner">
                                 <span className="material-symbols-outlined text-2xl">auto_graph</span>
                             </div>
                         </div>
-                        <div className="bg-surface-light dark:bg-surface-dark p-6 rounded-xl border border-border-light dark:border-border-dark shadow-sm flex items-start justify-between">
+                        
+                        <div className="bg-surface-light dark:bg-surface-dark p-6 rounded-xl border border-border-light dark:border-border-dark shadow-sm flex items-start justify-between transition-transform hover:-translate-y-1 duration-200">
                             <div>
-                                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Repository Growth Rate</p>
-                                <h3 className="text-2xl font-bold text-gray-900 dark:text-white mt-2">{stats.growthRate}</h3>
+                                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Upload Growth</p>
+                                <div className="flex items-center gap-2 mt-2">
+                                    <h3 className="text-2xl font-bold text-gray-900 dark:text-white">{stats.growthRate}</h3>
+                                </div>
                                 <p className="text-sm text-text-muted-light dark:text-text-muted-dark mt-1 flex items-center font-medium">
                                     Month-over-month
                                 </p>
                             </div>
-                            <div className="p-3 bg-teal-50 dark:bg-teal-900/30 rounded-lg text-teal-600 dark:text-teal-400">
-                                <span className="material-symbols-outlined text-2xl">show_chart</span>
+                            <div className="p-3 bg-teal-50 dark:bg-teal-900/30 rounded-full text-teal-600 dark:text-teal-400 shadow-inner">
+                                <span className="material-symbols-outlined text-2xl">trending_up</span>
                             </div>
                         </div>
-                        <div className="bg-surface-light dark:bg-surface-dark p-6 rounded-xl border border-border-light dark:border-border-dark shadow-sm flex items-start justify-between">
+                        
+                        <div className="bg-surface-light dark:bg-surface-dark p-6 rounded-xl border border-border-light dark:border-border-dark shadow-sm flex items-start justify-between transition-transform hover:-translate-y-1 duration-200">
                             <div>
-                                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Most Active Department</p>
-                                <h3 className="text-xl font-bold text-gray-900 dark:text-white mt-2">{stats.activeDept}</h3>
-                                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Leading contributions</p>
+                                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Leading Department</p>
+                                <h3 className="text-xl font-bold text-gray-900 dark:text-white mt-2 truncate max-w-[160px]" title={stats.activeDept}>{stats.activeDept}</h3>
+                                <p className="text-sm text-text-muted-light dark:text-text-muted-dark mt-1">By volume</p>
                             </div>
-                            <div className="p-3 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg text-indigo-600 dark:text-indigo-400">
-                                <span className="material-symbols-outlined text-2xl">groups</span>
+                            <div className="p-3 bg-indigo-50 dark:bg-indigo-900/30 rounded-full text-indigo-600 dark:text-indigo-400 shadow-inner">
+                                <span className="material-symbols-outlined text-2xl">corporate_fare</span>
                             </div>
                         </div>
                     </div>
@@ -388,13 +406,19 @@ export const TrendsPage = () => {
                                             </h3>
                                         </div>
                                         <div className="prose prose-sm dark:prose-invert max-w-none text-gray-600 dark:text-gray-300">
-                                            <p className="italic text-text-muted-light dark:text-text-muted-dark">
-                                                Report generation requires active data.
-                                            </p>
+                                            {loading ? (
+                                                <p className="italic text-text-muted-light dark:text-text-muted-dark">Gathering insights...</p>
+                                            ) : (
+                                                <ul className="space-y-2 mt-2 ml-4 list-disc marker:text-primary">
+                                                    <li>The keyword <strong>"{stats.topTopic}"</strong> has seen significant usage indicating a rising trend in recent thesis submissions.</li>
+                                                    <li><strong>{stats.activeDept}</strong> leads in research volume, maintaining the highest output rate this semester.</li>
+                                                    <li>Overall platform activity has shifted by <strong>{stats.growthRate}</strong> month-over-month, showing strong continued engagement.</li>
+                                                </ul>
+                                            )}
                                         </div>
                                         <div className="pt-2">
-                                            <button className="text-xs font-medium text-text-muted-light cursor-not-allowed flex items-center gap-1 transition-colors" disabled>
-                                                Generate report <span className="material-symbols-outlined text-xs">arrow_forward</span>
+                                            <button className="text-sm font-medium text-primary hover:text-primary-light flex items-center gap-1 transition-colors group">
+                                                Download full report <span className="material-symbols-outlined text-sm group-hover:translate-x-1 transition-transform">arrow_forward</span>
                                             </button>
                                         </div>
                                     </div>

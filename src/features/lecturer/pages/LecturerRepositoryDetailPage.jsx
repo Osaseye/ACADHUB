@@ -39,6 +39,8 @@ export const LecturerRepositoryDetailPage = () => {
     const [loading, setLoading] = useState(true);
     const [notes, setNotes] = useState([]);
     const [newNote, setNewNote] = useState('');
+    const [hasNotePermission, setHasNotePermission] = useState(false);
+    const [permissionRequested, setPermissionRequested] = useState(false);
 
     useEffect(() => {
         const fetchProject = async () => {
@@ -66,6 +68,11 @@ export const LecturerRepositoryDetailPage = () => {
                   authorName: authorName || 'Unknown Author',
                   university: university || 'Unknown Institution'
               });
+
+              // Check if they are the supervisor to auto-grant note permission
+              if (currentUser && data.supervisorId === currentUser.uid) {
+                  setHasNotePermission(true);
+              }
             } else {
               console.log('No such document!');
             }
@@ -94,6 +101,10 @@ export const LecturerRepositoryDetailPage = () => {
     const handleAddNote = async (e) => {
         e.preventDefault();
         if(!newNote.trim()) return;
+        if (!hasNotePermission) {
+            toast.error("You must request permission to add a note.");
+            return;
+        }
         
         try {
             await addDoc(collection(db, `projects/${id}/notes`), {
@@ -136,6 +147,12 @@ export const LecturerRepositoryDetailPage = () => {
              y: { display: false },
              x: { display: false }
         }
+    };
+
+    const handleRequestPermission = () => {
+        setPermissionRequested(true);
+        toast.success("Permission request sent to the supervisor.");
+        // In a real app, this would write a notification to the database.
     };
 
     const handleVerify = async () => {
@@ -368,57 +385,76 @@ if (!project) {
                                     Internal Lecturer Notes
                                 </h2>
                                 
-                                {/* Existing Feedback from Project Doc */}
-                                {project.lecturerFeedback && (
-                                    <div className="mb-4 p-4 bg-white dark:bg-black/20 rounded border-l-4 border-yellow-400 dark:border-yellow-600 shadow-sm">
-                                        <div className="flex justify-between items-center mb-2">
-                                            <span className="text-xs font-bold uppercase tracking-wider text-yellow-700 dark:text-yellow-600">Supervisor Feedback</span>
-                                        </div>
-                                        <p className="text-sm text-gray-800 dark:text-gray-200">{project.lecturerFeedback}</p>
-                                    </div>
-                                )}
-
-                                {/* Notes List */}
-                                <div className="space-y-3 mb-4 max-h-60 overflow-y-auto pr-2">
-                                    {notes.length === 0 && !project.lecturerFeedback ? (
-                                        <div className="p-3 bg-white dark:bg-black/20 rounded border border-yellow-100 dark:border-yellow-900/30">
-                                            <p className="text-sm text-text-muted-light dark:text-text-muted-dark italic">
-                                                No notes available yet.
-                                            </p>
-                                        </div>
-                                    ) : (
-                                        notes.map(note => (
-                                            <div key={note.id} className={`p-3 rounded border text-sm ${note.type === 'system' ? 'bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700' : 'bg-white dark:bg-black/20 border-yellow-100 dark:border-yellow-900/30'}`}>
-                                                <div className="flex justify-between items-center mb-1">
-                                                    <span className="font-semibold text-gray-900 dark:text-gray-100 text-xs">{note.authorName}</span>
-                                                    <span className="text-[10px] text-gray-500">
-                                                        {note.createdAt?.seconds ? new Date(note.createdAt.seconds * 1000).toLocaleString() : 'Just now'}
-                                                    </span>
-                                                </div>
-                                                <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{note.content}</p>
-                                            </div>
-                                        ))
-                                    )}
-                                </div>
-
-                                <form onSubmit={handleAddNote} className="space-y-2">
-                                    <textarea 
-                                        className="w-full p-2 text-sm border border-border-light dark:border-border-dark rounded-md bg-white dark:bg-black/30 text-text-light dark:text-text-dark focus:ring-yellow-500 focus:border-yellow-500 outline-none"
-                                        placeholder="Add a note visible to other lecturers..."
-                                        rows="2"
-                                        value={newNote}
-                                        onChange={(e) => setNewNote(e.target.value)}
-                                    ></textarea>
-                                    <div className="flex justify-end">
+                                {!hasNotePermission ? (
+                                    <div className="text-center py-6 bg-white dark:bg-black/20 rounded border border-yellow-100 dark:border-yellow-900/30">
+                                        <span className="material-symbols-outlined text-yellow-500 text-4xl mb-2">privacy_tip</span>
+                                        <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">Restricted Access</h3>
+                                        <p className="text-xs text-gray-600 dark:text-gray-400 mb-4 px-4">
+                                            These notes are private between the assigned supervisor and authorized lecturers. Request permission to view and contribute.
+                                        </p>
                                         <button 
-                                            type="submit"
-                                            disabled={!newNote.trim()}
-                                            className="px-3 py-1 bg-yellow-600 hover:bg-yellow-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-medium rounded shadow-sm transition-colors"
+                                            onClick={handleRequestPermission}
+                                            disabled={permissionRequested}
+                                            className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 disabled:opacity-50 text-white text-xs font-medium rounded shadow-sm transition-colors"
                                         >
-                                            Add Note
+                                            {permissionRequested ? 'Permission Requested' : 'Request Access'}
                                         </button>
                                     </div>
-                                </form>
+                                ) : (
+                                    <>
+                                        {/* Existing Feedback from Project Doc */}
+                                        {project.lecturerFeedback && (
+                                            <div className="mb-4 p-4 bg-white dark:bg-black/20 rounded border-l-4 border-yellow-400 dark:border-yellow-600 shadow-sm">
+                                                <div className="flex justify-between items-center mb-2">
+                                                    <span className="text-xs font-bold uppercase tracking-wider text-yellow-700 dark:text-yellow-600">Supervisor Feedback</span>
+                                                </div>
+                                                <p className="text-sm text-gray-800 dark:text-gray-200">{project.lecturerFeedback}</p>
+                                            </div>
+                                        )}
+
+                                        {/* Notes List */}
+                                        <div className="space-y-3 mb-4 max-h-60 overflow-y-auto pr-2">
+                                            {notes.length === 0 && !project.lecturerFeedback ? (
+                                                <div className="p-3 bg-white dark:bg-black/20 rounded border border-yellow-100 dark:border-yellow-900/30">
+                                                    <p className="text-sm text-text-muted-light dark:text-text-muted-dark italic">
+                                                        No notes available yet.
+                                                    </p>
+                                                </div>
+                                            ) : (
+                                                notes.map(note => (
+                                                    <div key={note.id} className={`p-3 rounded border text-sm ${note.type === 'system' ? 'bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700' : 'bg-white dark:bg-black/20 border-yellow-100 dark:border-yellow-900/30'}`}>
+                                                        <div className="flex justify-between items-center mb-1">
+                                                            <span className="font-semibold text-gray-900 dark:text-gray-100 text-xs">{note.authorName}</span>
+                                                            <span className="text-[10px] text-gray-500">
+                                                                {note.createdAt?.seconds ? new Date(note.createdAt.seconds * 1000).toLocaleString() : 'Just now'}
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{note.content}</p>
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+
+                                        <form onSubmit={handleAddNote} className="space-y-2">
+                                            <textarea 
+                                                className="w-full p-2 text-sm border border-border-light dark:border-border-dark rounded-md bg-white dark:bg-black/30 text-text-light dark:text-text-dark focus:ring-yellow-500 focus:border-yellow-500 outline-none"
+                                                placeholder="Add a note visible to other lecturers..."
+                                                rows="2"
+                                                value={newNote}
+                                                onChange={(e) => setNewNote(e.target.value)}
+                                            ></textarea>
+                                            <div className="flex justify-end">
+                                                <button 
+                                                    type="submit"
+                                                    disabled={!newNote.trim()}
+                                                    className="px-3 py-1 bg-yellow-600 hover:bg-yellow-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-medium rounded shadow-sm transition-colors"
+                                                >
+                                                    Add Note
+                                                </button>
+                                            </div>
+                                        </form>
+                                    </>
+                                )}
                             </section>
                         </div>
                         

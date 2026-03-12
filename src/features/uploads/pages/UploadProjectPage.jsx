@@ -48,7 +48,10 @@ export const UploadProjectPage = () => {
                 const querySnapshot = await getDocs(q);
                 const fetchedSupervisors = [];
                 querySnapshot.forEach((doc) => {
-                    fetchedSupervisors.push({ id: doc.id, ...doc.data() });
+                    const data = doc.data();
+                    if (data.verificationStatus === 'verified') {
+                        fetchedSupervisors.push({ id: doc.id, ...data });
+                    }
                 });
                 setSupervisors(fetchedSupervisors);
             } catch (error) {

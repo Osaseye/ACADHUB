@@ -41,8 +41,8 @@ service cloud.firestore {
     // --- Projects Collection (Student Uploads) ---
     match /projects/{projectId} {
       allow read: if isAuthenticated();
-      // Only students can create
-      allow create: if isAuthenticated() && request.resource.data.studentId == request.auth.uid;
+      // Students can create their own, Admins can create (for seeding data)
+      allow create: if isAuthenticated() && (request.resource.data.studentId == request.auth.uid || isAdmin());
       // Owner, Supervisor, or Admin can update
       allow update: if isAuthenticated() && (
         resource.data.studentId == request.auth.uid || 
@@ -64,6 +64,11 @@ service cloud.firestore {
         allow create: if isAuthenticated() && (isLecturer() || isAdmin());
         allow update, delete: if isAuthenticated() && (resource.data.authorId == request.auth.uid || isAdmin());
       }
+    }
+
+    // --- Notifications Collection ---
+    match /notifications/{notificationId} {
+      allow read, update, delete: if isAuthenticated() && (
         resource.data.recipientId == request.auth.uid || 
         resource.data.userId == request.auth.uid || 
         isAdmin()

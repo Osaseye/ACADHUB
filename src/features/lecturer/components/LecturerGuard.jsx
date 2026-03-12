@@ -64,6 +64,12 @@ export const LecturerGuard = () => {
                     <p className="text-gray-600 dark:text-gray-400 mb-6">
                         We were unable to verify your academic credentials. Please contact support or university administration for assistance.
                     </p>
+                    {currentUser.rejectionReason && (
+                        <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/10 rounded-lg text-left">
+                            <p className="text-sm font-semibold text-red-700 dark:text-red-400 mb-1">Reason for rejection:</p>
+                            <p className="text-sm text-red-600 dark:text-red-300">{currentUser.rejectionReason}</p>
+                        </div>
+                    )}
                     <button className="px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 rounded-lg text-gray-700 dark:text-gray-200 font-medium transition-colors">
                         Contact Support
                     </button>
