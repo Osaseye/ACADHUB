@@ -6,6 +6,10 @@ import { PageLoader } from "./components/common/PageLoader";
 import { AuthProvider } from "./context/AuthContext";
 import { NotificationProvider } from "./context/NotificationContext";
 import { LecturerGuard } from "./features/lecturer/components/LecturerGuard";
+import { AuthGuard } from "./features/auth/components/AuthGuard";
+import { AdminGuard } from "./features/auth/components/AdminGuard";
+import { ErrorBoundary } from "./components/common/ErrorBoundary";
+import { NotFoundPage } from "./components/common/NotFoundPage";
 
 // Static Imports (Critical Path)
 import LandingPage from "./features/landing/LandingPage";
@@ -52,29 +56,34 @@ const AdminSettingsPage = lazy(() => import("./features/admin/pages/AdminSetting
 
 function App() {
   return (
-    <Router>
-      <AuthProvider>
-        <NotificationProvider>
-        <Toaster position="top-right" richColors />
-        <ScrollToTop />
-        <Suspense fallback={<PageLoader />}>
-        <Routes>
-            <Route path="/" element={<LandingPage />} />
+    <ErrorBoundary>
+      <Router>
+        <AuthProvider>
+          <NotificationProvider>
+            <Toaster position="top-right" richColors />
+            <ScrollToTop />
+            <Suspense fallback={<PageLoader />}>
+            <Routes>
+                <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         
         {/* Admin Routes */}
         <Route path="/admin/login" element={<AdminLoginPage />} />
-        <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
-        <Route path="/admin/verification" element={<VerificationRequestsPage />} />
-        <Route path="/admin/users" element={<UserManagementPage />} />
-        <Route path="/admin/moderation" element={<ContentModerationPage />} />
-        <Route path="/admin/settings" element={<AdminSettingsPage />} />
+        <Route element={<AdminGuard />}>
+          <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
+          <Route path="/admin/verification" element={<VerificationRequestsPage />} />
+          <Route path="/admin/users" element={<UserManagementPage />} />
+          <Route path="/admin/moderation" element={<ContentModerationPage />} />
+          <Route path="/admin/settings" element={<AdminSettingsPage />} />
+        </Route>
 
         {/* Student Routes */}
-        <Route path="/onboarding/student" element={<StudentOnboardingPage />} />
-        <Route path="/dashboard" element={<DashboardPage />} />
+        <Route element={<AuthGuard />}>
+          <Route path="/onboarding/student" element={<StudentOnboardingPage />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
+        </Route>
         
         {/* Lecturer Routes */}
         <Route path="/onboarding/lecturer" element={<LecturerOnboardingPage />} />
@@ -94,22 +103,28 @@ function App() {
         </Route>
         
         {/* Shared Routes */}
-        <Route path="/repository" element={<RepositoryPage />} />
-        <Route path="/repository/:id" element={<RepositoryDetailPage />} />
-        <Route path="/profile" element={<UserProfilePage />} />
-        <Route path="/profile/:userId" element={<UserProfilePage />} />
-        <Route path="/uploads" element={<MyUploadsPage />} />
-        <Route path="/uploads/new" element={<UploadProjectPage />} />
-        <Route path="/uploads/edit/:id" element={<UploadProjectPage />} /> 
-        <Route path="/analytics" element={<TrendsPage />} />
-        <Route path="/saved" element={<SavedPage />} />
+        <Route element={<AuthGuard />}>
+          <Route path="/repository" element={<RepositoryPage />} />
+          <Route path="/repository/:id" element={<RepositoryDetailPage />} />
+          <Route path="/profile" element={<UserProfilePage />} />
+          <Route path="/profile/:userId" element={<UserProfilePage />} />
+          <Route path="/uploads" element={<MyUploadsPage />} />
+          <Route path="/uploads/new" element={<UploadProjectPage />} />
+          <Route path="/uploads/edit/:id" element={<UploadProjectPage />} /> 
+          <Route path="/analytics" element={<TrendsPage />} />
+          <Route path="/saved" element={<SavedPage />} />
           <Route path="/notifications" element={<NotificationsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+        </Route>
+        
+        {/* Fallback 404 Route */}
+        <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </Suspense>
       </NotificationProvider>
     </AuthProvider>
   </Router>
+  </ErrorBoundary>
   );
 }
 

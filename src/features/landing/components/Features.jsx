@@ -3,7 +3,7 @@ import { CodeWindow } from "./CodeWindow";
 import { useInView } from "react-intersection-observer";
 
 const FeatureItem = ({ children, delay = 0 }) => {
-    const { ref,InView } = useInView({
+    const { ref, inView } = useInView({
         triggerOnce: true,
         threshold: 0.1,
     });

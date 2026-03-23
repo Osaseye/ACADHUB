@@ -274,10 +274,15 @@ export const SupervisionRequestDetailPage = () => {
                     </section>
 
                     {/* Right Sidebar (AI Assistant) - w-1/3 */}
-                    <aside className="w-1/3 min-w-[350px] bg-white flex flex-col h-full overflow-hidden shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-10">
-                        <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2 bg-gradient-to-r from-white to-indigo-50/30">
-                            <span className="material-symbols-outlined text-teal-600 text-2xl">auto_awesome</span>
-                            <h2 className="font-bold text-slate-800">AI Review Assistant</h2>
+                    <aside className="w-1/3 min-w-[350px] bg-white flex flex-col h-full overflow-hidden shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-10 opacity-70">
+                        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between gap-2 bg-gradient-to-r from-white to-indigo-50/30">
+                            <div className="flex items-center gap-2">
+                                <span className="material-symbols-outlined text-teal-600 text-2xl">auto_awesome</span>
+                                <h2 className="font-bold text-slate-800">AI Review Assistant</h2>
+                            </div>
+                            <span className="text-[10px] bg-yellow-100 text-yellow-800 font-bold px-2 py-0.5 rounded border border-yellow-200 uppercase tracking-wide">
+                                Coming Soon
+                            </span>
                         </div>
                         
                         <div className="flex-grow overflow-y-auto custom-scrollbar [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none'] p-6 space-y-6">
@@ -386,7 +391,11 @@ export const SupervisionRequestDetailPage = () => {
                                 </div>
                                 
                                 <div className="flex justify-end pt-2">
-                                    <button className="px-4 py-2 bg-slate-800 text-white text-sm font-medium rounded-lg hover:bg-slate-700 transition-colors">
+                                    <button 
+                                        disabled
+                                        className="px-4 py-2 bg-slate-400 text-white text-sm font-medium rounded-lg cursor-not-allowed transition-colors"
+                                        title="Feature coming soon"
+                                    >
                                         Post Comment
                                     </button>
                                 </div>

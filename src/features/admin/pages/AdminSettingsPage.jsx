@@ -118,7 +118,7 @@ export const AdminSettingsPage = () => {
         <div className="flex h-screen overflow-hidden bg-[#F3F4F6] dark:bg-[#0D1117] text-gray-900 dark:text-gray-300 font-sans transition-colors duration-200">
             <Sidebar 
                 isCollapsed={isSidebarCollapsed} 
-                toggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)} 
+                toggleSidebar={toggleSidebar} 
                 role="admin"
             />
             

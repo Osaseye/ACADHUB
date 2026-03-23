@@ -104,7 +104,7 @@ export const AuthProvider = ({ children }) => {
         setCurrentUser(combinedUser);
         setUserRole(userData.role);
         
-        return res;
+        return combinedUser;
     };
 
     const logout = () => {

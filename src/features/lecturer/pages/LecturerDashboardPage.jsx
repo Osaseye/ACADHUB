@@ -141,7 +141,7 @@ export const LecturerDashboardPage = () => {
         <div className="flex h-screen overflow-hidden bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark font-sans transition-colors duration-200">
             <Sidebar 
                 isCollapsed={isSidebarCollapsed} 
-                toggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)} 
+                toggleSidebar={toggleSidebar} 
                 role="lecturer"
             />
 

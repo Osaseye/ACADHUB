@@ -200,7 +200,7 @@ export const LecturerAnalyticsPage = () => {
                                         maintainAspectRatio: false,
                                         plugins: { legend: { display: false } },
                                         scales: {
-                                            y: { grid: { color: isSidebarCollapsed ? '#f3f4f6' : '#374151' } }, // Simple dark mode guess, better to use CSS var
+                                            y: { grid: { color: document.documentElement.classList.contains('dark') ? '#374151' : '#f3f4f6' } },
                                             x: { grid: { display: false } }
                                         }
                                     }} 

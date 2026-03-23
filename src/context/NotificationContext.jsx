@@ -15,6 +15,7 @@ export const NotificationProvider = ({ children }) => {
     
     // Ref to track if it's the first load to avoid spamming toasts on page refresh
     const isFirstLoad = useRef(true);
+    const toastedIds = useRef(new Set());
 
     useEffect(() => {
         let unsubscribe = () => {};
@@ -43,9 +44,9 @@ export const NotificationProvider = ({ children }) => {
                 setUnreadCount(notifs.filter(n => !n.isRead && !n.read).length); // Handle both isRead and read fields just in case
                 
                 // Handle Toasts for new notifications
-                if (!isFirstLoad.current) {
-                    snapshot.docChanges().forEach((change) => {
-                        if (change.type === "added") {
+                snapshot.docChanges().forEach((change) => {
+                    if (change.type === "added" && !toastedIds.current.has(change.doc.id)) {
+                        if (!isFirstLoad.current) {
                             const data = change.doc.data();
                             // Only toast if it's recent (e.g. within last minute) to avoid stale data popping up
                             const created = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
@@ -58,11 +59,15 @@ export const NotificationProvider = ({ children }) => {
                                         onClick: () => window.location.href = data.link || '/notifications'
                                     }
                                 });
+                                toastedIds.current.add(change.doc.id);
                             }
                         }
-                    });
-                } else {
+                    }
+                });
+
+                if (isFirstLoad.current) {
                     isFirstLoad.current = false;
+                    snapshot.docs.forEach(d => toastedIds.current.add(d.id));
                 }
                 
                 setLoading(false);

@@ -22,25 +22,15 @@ export const LoginPage = () => {
     
     try {
       const userCredential = await login(email, password);
-      const user = userCredential.user;
-
-      // Fetch role directly to determine redirect
-      const docRef = doc(db, "users", user.uid);
-      const docSnap = await getDoc(docRef);
-
-      if (docSnap.exists()) {
-          const role = docSnap.data().role;
-          toast.success("Welcome back!");
-          
-          if (role === 'lecturer') {
-              navigate("/lecturer/dashboard");
-          } else if (role === 'admin') {
-              navigate("/admin/dashboard");
-          } else {
-              navigate("/dashboard");
-          }
+      const role = userCredential.role;
+      
+      toast.success("Welcome back!");
+      
+      if (role === 'lecturer') {
+          navigate("/lecturer/dashboard");
+      } else if (role === 'admin') {
+          navigate("/admin/dashboard");
       } else {
-          // Fallback if no user doc (shouldn't happen for valid users)
           navigate("/dashboard");
       }
     } catch (error) {

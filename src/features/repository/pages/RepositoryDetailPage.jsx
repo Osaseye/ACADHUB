@@ -16,8 +16,7 @@ import { db, app } from '../../../config/firebase';
 import { useAuth } from '../../../context/AuthContext';
 import { toast } from 'sonner';
 import ReactMarkdown from 'react-markdown';
-// Attempting to use the preview path if the main one is missing in the installed version
-import { getAI, getGenerativeModel, VertexAIBackend } from "firebase/ai";
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { Sidebar } from '../../../components/layout/Sidebar';
 import { useSidebar } from '../../../hooks/useSidebar';
 import { PageLoader } from '../../../components/common/PageLoader';
@@ -161,17 +160,13 @@ export const RepositoryDetailPage = () => {
         setGeneratingInsight(true);
         setInsightError(null);
         try {
-            const ai = getAI(app, { backend: new VertexAIBackend() });
-            const model = getGenerativeModel(ai, { model: "gemini-2.0-flash-lite-001" });
-            const prompt = `Analyze the following academic project abstract and provide 3 key insights or potential impact areas:\n\nTitle: ${project.title}\nAbstract: ${project.abstract}`;
-            
-            const result = await model.generateContent(prompt);
-            const response = await result.response;
-            const text = response.text();
-            setAiInsight(text);
+            const functions = getFunctions(app);
+            const generateProjectInsight = httpsCallable(functions, 'generateProjectInsight');
+            const result = await generateProjectInsight({ projectId: id });
+            setAiInsight(result.data.insight);
         } catch (error) {
             console.error("Error generating insight:", error);
-            setInsightError("Failed to generate insights. Please try again later. Ensure Firebase Vertex AI is enabled.");
+            setInsightError("Failed to generate insights. Please try again later.");
         } finally {
             setGeneratingInsight(false);
         }
@@ -192,6 +187,9 @@ export const RepositoryDetailPage = () => {
 
                 if (docData.exists()) {
                     setProject({ id: docData.id, ...docData.data() });
+                    if (currentUser && docData.data().studentId !== currentUser.uid) {
+                        updateDoc(docRef, { views: increment(1) });
+                    }
                 } else {
                     console.log("No such document!");
                     setProject(null);
@@ -205,9 +203,8 @@ export const RepositoryDetailPage = () => {
         };
 
         fetchProject();
-    }, [id]);
+    }, [id, currentUser]);
 
-    // Chart Data (Static for now as requested)
     const chartData = {
         labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
         datasets: [
@@ -418,7 +415,7 @@ export const RepositoryDetailPage = () => {
                                 {[
                                     { id: 'overview', label: 'Overview', icon: 'article' },
                                     { id: 'full-doc', label: 'Full Document', icon: 'picture_as_pdf' },
-                                    { id: 'ai-insights', label: 'AI Insights', icon: 'auto_awesome', beta: true },
+                                    { id: 'ai-insights', label: 'AI Insights', icon: 'auto_awesome' },
                                     { id: 'trends', label: 'Trends & Impact', icon: 'show_chart' }
                                 ].map((tab) => (
                                     <button
@@ -432,9 +429,6 @@ export const RepositoryDetailPage = () => {
                                     >
                                         <span className={`material-symbols-outlined mr-2 !text-lg ${tab.id === 'ai-insights' ? 'text-purple-500' : ''}`}>{tab.icon}</span>
                                         {tab.label}
-                                        {tab.beta && (
-                                            <span className="ml-2 bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-300 py-0.5 px-2 rounded-full text-xs">Beta</span>
-                                        )}
                                     </button>
                                 ))}
                             </nav>
@@ -446,6 +440,7 @@ export const RepositoryDetailPage = () => {
                         <div className="lg:col-span-2 space-y-8">
                             
                             {/* Abstract Section */}
+                            {activeTab === 'overview' && (
                             <section className="bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-lg shadow-sm p-6 relative overflow-hidden">
                                 <div className="absolute top-0 right-0 p-4 opacity-10">
                                     <span className="material-symbols-outlined text-8xl">description</span>
@@ -458,7 +453,7 @@ export const RepositoryDetailPage = () => {
                                 </div>
                                 <div className="mt-6 flex flex-wrap gap-2">
                                     {project.keywords ? (
-                                        project.keywords.split(',').map((keyword, index) => (
+                                        project.keywords.split(';').map((keyword, index) => (
                                             <span key={index} className="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200 border border-gray-200 dark:border-gray-700">
                                                 {keyword.trim()}
                                             </span>
@@ -468,6 +463,7 @@ export const RepositoryDetailPage = () => {
                                     )}
                                 </div>
                             </section>
+                            )}
 
                             {/* Full Document Tab */}
                             {activeTab === 'full-doc' && (

@@ -261,7 +261,7 @@ export const StudentOnboardingPage = () => {
                                     onChange={handleFileChange}
                                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                                 />
-                                <span className="text-xs text-gray-500 mt-2 block text-center mt-26">Upload Photo</span>
+                                <span className="text-xs text-gray-500 mt-3 block text-center">Upload Photo</span>
                             </div>
                         </div>
 

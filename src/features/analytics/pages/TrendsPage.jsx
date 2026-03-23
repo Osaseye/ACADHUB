@@ -36,8 +36,14 @@ export const TrendsPage = () => {
     const { isSidebarCollapsed, toggleSidebar } = useSidebar();
     const chartRef = useRef(null);
     const [loading, setLoading] = useState(true);
+    const [allProjects, setAllProjects] = useState([]); // Store un-filtered here
     const [projects, setProjects] = useState([]);
     
+    // Filters State
+    const [filterDegree, setFilterDegree] = useState('All Degrees');
+    const [filterDept, setFilterDept] = useState('All Departments');
+    const [filterTime, setFilterTime] = useState('All Time');
+
     // Chart Data States
     const [lineData, setLineData] = useState({ labels: [], datasets: [] });
     const [doughnutData, setDoughnutData] = useState({ labels: [], datasets: [] });
@@ -48,7 +54,8 @@ export const TrendsPage = () => {
         topTopic: '-',
         growthRate: '0%',
         activeDept: '-',
-        totalProjects: 0
+        totalProjects: 0,
+        trendingTopics: [] // Default trending topics list
     });
 
     useEffect(() => {
@@ -63,6 +70,7 @@ export const TrendsPage = () => {
                     return { ...d, id: doc.id, createdAt };
                 });
                 
+                setAllProjects(data);
                 setProjects(data);
                 processAnalytics(data);
             } catch (error) {
@@ -74,6 +82,44 @@ export const TrendsPage = () => {
 
         fetchData();
     }, []);
+
+    useEffect(() => {
+        if (allProjects.length === 0) return;
+
+        let filtered = [...allProjects];
+
+        if (filterDegree !== 'All Degrees') {
+             filtered = filtered.filter(p => {
+                 const t = (p.degree || p.type || '').toLowerCase();
+                 // Improved checking using the actual drop-down values used in UploadProjectPage
+                 if (filterDegree === 'BSc') return t.includes('bsc') || t.includes('bachelor');
+                 if (filterDegree === 'MSc') return t.includes('msc') || t.includes('master') || t.includes('dissertation');
+                 if (filterDegree === 'PhD') return t.includes('phd') || t.includes('doctor') || t.includes('thesis');
+                 return false;
+             });
+        }
+
+        if (filterDept !== 'All Departments') {
+             filtered = filtered.filter(p => (p.department || '').toLowerCase().includes(filterDept.toLowerCase()));
+        }
+
+        if (filterTime !== 'All Time') {
+            const now = new Date();
+            filtered = filtered.filter(p => {
+                if (filterTime === 'Last 12 Months') {
+                     return p.createdAt >= subMonths(now, 12);
+                } else if (filterTime === '2023') {
+                     return p.createdAt.getFullYear() === 2023;
+                } else if (filterTime === '2022') {
+                     return p.createdAt.getFullYear() === 2022;
+                }
+                return true;
+            });
+        }
+
+        setProjects(filtered);
+        processAnalytics(filtered);
+    }, [filterDegree, filterDept, filterTime, allProjects]);
 
     const processAnalytics = (data) => {
         // 1. Degree Distribution (Doughnut)
@@ -169,9 +215,20 @@ export const TrendsPage = () => {
             growth = ((currentMonthCount - prevMonthCount) / prevMonthCount) * 100;
         }
 
-        // 5. Top Topic (Simple word frequency in titles)
+        // 5. Trending Topics (from keywords and titles)
         const words = {};
         data.forEach(p => {
+             // Process keywords (semi-colon separated)
+             if (p.keywords) {
+                 const kws = p.keywords.split(';');
+                 kws.forEach(k => {
+                     const kw = k.trim().toLowerCase();
+                     if (kw && kw.length > 2) {
+                         words[kw] = (words[kw] || 0) + 2; // give higher weight to keywords
+                     }
+                 });
+             }
+            // Process title words
             const titleWords = (p.title || '').toLowerCase().split(/\s+/);
             titleWords.forEach(w => {
                 if (w.length > 4) { // Filter small words
@@ -179,13 +236,19 @@ export const TrendsPage = () => {
                 }
             });
         });
-        const topWord = Object.entries(words).sort((a, b) => b[1] - a[1])[0];
+        
+        const sortedTopics = Object.entries(words)
+             .sort((a, b) => b[1] - a[1])
+             .slice(0, 8); // Top 8 trending topics
+
+        const topWord = sortedTopics.length > 0 ? sortedTopics[0] : null;
 
         setStats({
             topTopic: topWord ? topWord[0] : 'N/A',
             growthRate: `${growth.toFixed(0)}%`,
             activeDept: topDept,
-            totalProjects: data.length
+            totalProjects: data.length,
+            trendingTopics: sortedTopics.map(t => ({ topic: t[0], count: t[1] }))
         });
     };
 
@@ -258,7 +321,10 @@ export const TrendsPage = () => {
                                 <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">
                                     <span className="material-symbols-outlined text-lg">school</span>
                                 </span>
-                                <select className="pl-10 pr-8 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none shadow-sm dark:text-white">
+                                <select 
+                                    value={filterDegree}
+                                    onChange={(e) => setFilterDegree(e.target.value)}
+                                    className="pl-10 pr-8 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none shadow-sm dark:text-white">
                                     <option>All Degrees</option>
                                     <option>BSc</option>
                                     <option>MSc</option>
@@ -269,7 +335,10 @@ export const TrendsPage = () => {
                                 <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">
                                     <span className="material-symbols-outlined text-lg">apartment</span>
                                 </span>
-                                <select className="pl-10 pr-8 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none shadow-sm dark:text-white">
+                                <select 
+                                    value={filterDept}
+                                    onChange={(e) => setFilterDept(e.target.value)}
+                                    className="pl-10 pr-8 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none shadow-sm dark:text-white">
                                     <option>All Departments</option>
                                     <option>Computer Science</option>
                                     <option>Engineering</option>
@@ -281,16 +350,16 @@ export const TrendsPage = () => {
                                 <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">
                                     <span className="material-symbols-outlined text-lg">calendar_today</span>
                                 </span>
-                                <select className="pl-10 pr-8 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none shadow-sm dark:text-white">
+                                <select 
+                                    value={filterTime}
+                                    onChange={(e) => setFilterTime(e.target.value)}
+                                    className="pl-10 pr-8 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none shadow-sm dark:text-white">
                                     <option>Last 12 Months</option>
                                     <option>2023</option>
                                     <option>2022</option>
                                     <option>All Time</option>
                                 </select>
                             </div>
-                            <button className="bg-secondary hover:bg-opacity-90 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center shadow-md transition">
-                                <span className="material-symbols-outlined text-lg mr-1">filter_list</span> Apply
-                            </button>
                         </div>
                     </div>
 
@@ -388,6 +457,27 @@ export const TrendsPage = () => {
                             </div>
                         </div>
 
+                        {/* Trending Topics List */}
+                        <div className="lg:col-span-3 bg-surface-light dark:bg-surface-dark p-6 rounded-xl border border-border-light dark:border-border-dark shadow-sm">
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center">
+                                    <span className="material-symbols-outlined mr-2 text-primary">local_fire_department</span>
+                                    Trends: Top Topics
+                                </h3>
+                            </div>
+                            <div className="flex flex-wrap gap-3">
+                                {stats.trendingTopics && stats.trendingTopics.map((item, index) => (
+                                    <div key={index} className="flex items-center bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full px-4 py-2">
+                                        <span className="text-sm font-medium text-gray-800 dark:text-gray-200 capitalize">{item.topic}</span>
+                                        <span className="ml-2 text-xs text-gray-500 bg-gray-200 dark:bg-gray-700 rounded-full px-2 py-0.5">{item.count}</span>
+                                    </div>
+                                ))}
+                                {(!stats.trendingTopics || stats.trendingTopics.length === 0) && (
+                                    <p className="text-sm text-gray-500">Not enough data to calculate trending topics.</p>
+                                )}
+                            </div>
+                        </div>
+
                         {/* AI Trends Report */}
                         <div className="lg:col-span-3 bg-gradient-to-r from-secondary to-primary p-[1px] rounded-xl shadow-lg">
                             <div className="bg-surface-light dark:bg-surface-dark rounded-[11px] p-6 relative overflow-hidden">
@@ -402,7 +492,6 @@ export const TrendsPage = () => {
                                         <div className="flex items-center justify-between">
                                             <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
                                                 AI-Generated Trend Report
-                                                <span className="bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide border border-blue-200 dark:border-blue-800">Beta</span>
                                             </h3>
                                         </div>
                                         <div className="prose prose-sm dark:prose-invert max-w-none text-gray-600 dark:text-gray-300">

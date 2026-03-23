@@ -69,8 +69,8 @@ export const LecturerRepositoryDetailPage = () => {
                   university: university || 'Unknown Institution'
               });
 
-              // Check if they are the supervisor to auto-grant note permission
-              if (currentUser && data.supervisorId === currentUser.uid) {
+              // Check if they are the supervisor or an approved lecturer to auto-grant note permission
+              if ((currentUser && data.supervisorId === currentUser.uid) || (currentUser && data.approvedLecturerIds && data.approvedLecturerIds.includes(currentUser.uid))) {
                   setHasNotePermission(true);
               }
             } else {
@@ -149,10 +149,26 @@ export const LecturerRepositoryDetailPage = () => {
         }
     };
 
-    const handleRequestPermission = () => {
+    const handleRequestPermission = async () => {
         setPermissionRequested(true);
-        toast.success("Permission request sent to the supervisor.");
-        // In a real app, this would write a notification to the database.
+        try {
+            await addDoc(collection(db, "notifications"), {
+                recipientId: project.supervisorId,
+                type: "note_permission_request",
+                title: "Note Access Request",
+                message: `${currentUser.displayName || "A lecturer"} has requested permission to view and contribute to the notes on project "${project.title}".`,
+                read: false,
+                projectId: id,
+                requesterId: currentUser.uid,
+                createdAt: new Date(),
+                link: `/lecturer/review/${id}`
+            });
+            toast.success("Permission request sent to the supervisor.");
+        } catch (err) {
+            console.error("Error asking permission:", err);
+            toast.error("Failed to request permission.");
+            setPermissionRequested(false);
+        }
     };
 
     const handleVerify = async () => {

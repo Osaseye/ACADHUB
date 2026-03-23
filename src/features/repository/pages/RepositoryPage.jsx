@@ -20,6 +20,7 @@ export const RepositoryPage = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedDegree, setSelectedDegree] = useState([]);
     const [selectedDepartment, setSelectedDepartment] = useState('All');
+    const [sortBy, setSortBy] = useState('newest');
 
     // Fetch projects and saved items
     useEffect(() => {
@@ -92,11 +93,18 @@ export const RepositoryPage = () => {
         return matchesSearch && matchesDepartment && matchesDegree;
     });
 
+    const sortedProjects = [...filteredProjects].sort((a, b) => {
+        if (sortBy === 'newest') return (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0);
+        if (sortBy === 'views') return (b.views || 0) - (a.views || 0);
+        if (sortBy === 'downloads') return (b.downloads || 0) - (a.downloads || 0);
+        return 0;
+    });
+
     // Pagination Logic
     const indexOfLastItem = currentPage * itemsPerPage;
     const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-    const currentRepositories = filteredProjects.slice(indexOfFirstItem, indexOfLastItem);
-    const totalPages = Math.ceil(filteredProjects.length / itemsPerPage);
+    const currentRepositories = sortedProjects.slice(indexOfFirstItem, indexOfLastItem);
+    const totalPages = Math.ceil(sortedProjects.length / itemsPerPage);
 
     const handlePageChange = (pageNumber) => {
         setCurrentPage(pageNumber);
@@ -269,10 +277,16 @@ export const RepositoryPage = () => {
                             </div>
                             <div className="flex gap-2">
                                 <div className="relative inline-block text-left">
-                                    <button className="inline-flex justify-center w-full rounded-md border border-border-light dark:border-border-dark px-4 py-2 bg-surface-light dark:bg-surface-dark text-sm font-medium text-text-primary-light dark:text-text-primary-dark hover:bg-gray-50 dark:hover:bg-gray-800 focus:outline-none items-center" type="button">
-                                        Sort: Best Match
-                                        <span className="material-symbols-outlined ml-2 -mr-1 text-[20px]">arrow_drop_down</span>
-                                    </button>
+                                    <select 
+                                        value={sortBy}
+                                        onChange={(e) => setSortBy(e.target.value)}
+                                        className="appearance-none inline-flex justify-center w-full rounded-md border border-border-light dark:border-border-dark pl-4 pr-8 py-2 bg-surface-light dark:bg-surface-dark text-sm font-medium text-text-primary-light dark:text-text-primary-dark hover:bg-gray-50 dark:hover:bg-gray-800 focus:outline-none items-center"
+                                        style={{ backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`, backgroundPosition: `right 0.5rem center`, backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}
+                                    >
+                                        <option value="newest">Sort: By Date</option>
+                                        <option value="views">Sort: By Views</option>
+                                        <option value="downloads">Sort: By Downloads</option>
+                                    </select>
                                 </div>
                                 <Link to="/uploads/new" className="bg-primary hover:bg-blue-800 text-white font-medium py-2 px-4 rounded-md flex items-center gap-2 text-sm transition-colors shadow-sm">
                                     <span className="material-symbols-outlined text-sm">book</span>

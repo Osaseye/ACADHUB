@@ -3,20 +3,26 @@ import { Link } from "react-router-dom";
 import { AuthLayout } from "../layout/AuthLayout";
 import { Input } from "../../../components/ui/Input";
 import { Button } from "../../../components/ui/Button";
+import { sendPasswordResetEmail } from 'firebase/auth';
+import { auth } from '../../../config/firebase';
+import { toast } from 'sonner';
 
 export const ForgotPasswordPage = () => {
   const [email, setEmail] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isSent, setIsSent] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
-    // Simulate API call
-    setTimeout(() => {
-        setIsLoading(false);
+    try {
+        await sendPasswordResetEmail(auth, email);
         setIsSent(true);
-    }, 1500);
+    } catch (error) {
+        toast.error(error.message);
+    } finally {
+        setIsLoading(false);
+    }
   };
 
   return (

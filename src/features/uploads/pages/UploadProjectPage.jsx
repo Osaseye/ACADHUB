@@ -477,7 +477,7 @@ export const UploadProjectPage = () => {
                                         value={formData.keywords}
                                         onChange={handleChange}
                                         className="w-full bg-background-light dark:bg-background-dark border border-border-light dark:border-border-dark rounded-md py-2 px-3 text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-shadow"
-                                        placeholder="e.g. Machine Learning, Healthcare, Nigeria (Comma separated)"
+                                        placeholder="e.g. Machine Learning; Healthcare; Nigeria (Semi-colon separated)"
                                     />
                                 </div>
                             </div>

@@ -59,7 +59,7 @@ export const LecturerUploadPage = () => {
                 type: formData.type,
                 venue: formData.venue,
                 publicationDate: formData.date,
-                keywords: formData.keywords.split(',').map(k => k.trim()),
+                keywords: formData.keywords.split(';').map(k => k.trim()),
                 fileUrl: downloadUrl,
                 fileName: projectFile.name,
                 fileSize: (projectFile.size / 1024 / 1024).toFixed(2) + " MB",
@@ -206,7 +206,7 @@ export const LecturerUploadPage = () => {
                                     onChange={handleChange}
                                     type="text"
                                     className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary bg-white dark:bg-gray-700 dark:text-white"
-                                    placeholder="Comma separated (e.g. AI, Machine Learning, Data Science)"
+                                    placeholder="Semi-colon separated (e.g. AI; Machine Learning; Data Science)"
                                 />
                             </div>
 

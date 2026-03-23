@@ -3,7 +3,7 @@ import { Sidebar } from '../../../components/layout/Sidebar';
 import { useSidebar } from '../../../hooks/useSidebar';
 import { useNotifications } from '../../../context/NotificationContext';
 import { db } from '../../../config/firebase';
-import { doc, updateDoc, writeBatch, deleteDoc } from 'firebase/firestore';
+import { doc, updateDoc, writeBatch, deleteDoc, arrayUnion } from 'firebase/firestore';
 import { toast } from 'sonner';
 
 export const LecturerNotificationsPage = () => {
@@ -19,6 +19,7 @@ export const LecturerNotificationsPage = () => {
             case 'citation': return { icon: 'format_quote', color: 'text-blue-600 bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400' };
             case 'system': return { icon: 'campaign', color: 'text-gray-600 bg-gray-100 dark:bg-gray-800 dark:text-gray-400' };
             case 'grant': return { icon: 'monetization_on', color: 'text-green-600 bg-green-100 dark:bg-green-900/30 dark:text-green-400' };
+            case 'note_permission_request': return { icon: 'key', color: 'text-yellow-600 bg-yellow-100 dark:bg-yellow-900/30 dark:text-yellow-400' };
             default: return { icon: 'notifications', color: 'text-gray-600 bg-gray-100 dark:bg-gray-800 flex items-center justify-center' };
         }
     };
@@ -49,6 +50,34 @@ export const LecturerNotificationsPage = () => {
             await updateDoc(doc(db, "notifications", id), { read: true, isRead: true });
         } catch (e) {
             console.error(e);
+        }
+    };
+
+    const handleAcceptNotePermission = async (note) => {
+        try {
+            // Update the project document with the new approved lecturer ID
+            const projectRef = doc(db, "projects", note.projectId);
+            await updateDoc(projectRef, {
+                approvedLecturerIds: arrayUnion(note.requesterId)
+            });
+
+            // Mark notification as handled/read
+            await updateDoc(doc(db, "notifications", note.id), { read: true, isRead: true, status: 'accepted' });
+            
+            toast.success("Permission granted successfully");
+        } catch (e) {
+            console.error("Error accepting permission:", e);
+            toast.error("Failed to grant permission");
+        }
+    };
+
+    const handleDeclineNotePermission = async (note) => {
+         try {
+            await updateDoc(doc(db, "notifications", note.id), { read: true, isRead: true, status: 'declined' });
+            toast.success("Permission request declined");
+        } catch (e) {
+            console.error(e);
+            toast.error("Failed to decline request");
         }
     };
 
@@ -129,6 +158,33 @@ export const LecturerNotificationsPage = () => {
                                                 <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
                                                     {note.message}
                                                 </p>
+                                                
+                                                {note.type === 'note_permission_request' && note.status !== 'accepted' && note.status !== 'declined' && (
+                                                    <div className="mt-4 flex gap-3">
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); handleAcceptNotePermission(note); }}
+                                                            className="px-4 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded-md shadow-sm transition-colors"
+                                                        >
+                                                            Accept
+                                                        </button>
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); handleDeclineNotePermission(note); }}
+                                                            className="px-4 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 dark:bg-red-900/30 dark:hover:bg-red-900/50 dark:text-red-400 text-xs font-medium rounded-md transition-colors"
+                                                        >
+                                                            Decline
+                                                        </button>
+                                                    </div>
+                                                )}
+                                                {note.type === 'note_permission_request' && (note.status === 'accepted' || note.status === 'declined') && (
+                                                    <div className="mt-2 text-xs font-medium">
+                                                        {note.status === 'accepted' ? (
+                                                            <span className="text-green-600 dark:text-green-400">Request Accepted</span>
+                                                        ) : (
+                                                            <span className="text-red-600 dark:text-red-400">Request Declined</span>
+                                                        )}
+                                                    </div>
+                                                )}
+
                                                 {note.link && (
                                                     <a href={note.link} className="text-xs text-primary hover:underline mt-2 inline-block">
                                                         View Details

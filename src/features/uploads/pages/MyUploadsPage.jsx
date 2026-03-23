@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, deleteDoc } from 'firebase/firestore';
 import { db } from '../../../config/firebase';
 import { useAuth } from '../../../context/AuthContext';
 import { Sidebar } from '../../../components/layout/Sidebar';
 import { useSidebar } from '../../../hooks/useSidebar';
+import { toast } from 'sonner';
 
 export const MyUploadsPage = () => {
     const { isSidebarCollapsed, toggleSidebar } = useSidebar();
@@ -70,6 +71,18 @@ export const MyUploadsPage = () => {
         if (project.lecturerFeedback) {
             // Simple alert for now, could be a modal
             alert(`Supervisor Feedback:\n\n${project.lecturerFeedback}`);
+        }
+    };
+
+    const handleDelete = async (projectId) => {
+        if (!window.confirm("Are you sure you want to delete this project?")) return;
+        try {
+            await deleteDoc(doc(db, 'projects', projectId));
+            setProjects(projects.filter(p => p.id !== projectId));
+            toast.success("Project deleted successfully");
+        } catch (error) {
+            console.error("Error deleting project:", error);
+            toast.error("Failed to delete project");
         }
     };
 
@@ -216,7 +229,10 @@ export const MyUploadsPage = () => {
                                                     )}
                                                     
                                                     {project.status !== 'verified' && (
-                                                        <button className="text-text-muted-light dark:text-text-muted-dark hover:text-red-600 dark:hover:text-red-400 transition-colors">
+                                                        <button 
+                                                            onClick={() => handleDelete(project.id)}
+                                                            className="text-text-muted-light dark:text-text-muted-dark hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                                                        >
                                                             <span className="material-symbols-outlined text-[20px]">delete</span>
                                                         </button>
                                                     )}

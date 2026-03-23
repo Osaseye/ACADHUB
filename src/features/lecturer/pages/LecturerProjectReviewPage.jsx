@@ -200,7 +200,7 @@ export const LecturerProjectReviewPage = () => {
                                     <div className="bg-white/60 dark:bg-black/20 p-4 rounded-lg">
                                         <h4 className="text-xs font-bold text-gray-500 uppercase mb-1">Keywords Detected</h4>
                                         <div className="flex flex-wrap gap-1 mt-1">
-                                            {(project.keywords ? project.keywords.split(',') : ['Analysis', 'Research', 'Study']).map((k, i) => (
+                                            {(project.keywords ? project.keywords.split(';') : ['Analysis', 'Research', 'Study']).map((k, i) => (
                                                 <span key={i} className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-xs rounded border border-indigo-200">
                                                     {k.trim()}
                                                 </span>

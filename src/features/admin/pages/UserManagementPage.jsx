@@ -30,7 +30,7 @@ export const UserManagementPage = () => {
                     department: doc.data().department || 'N/A',
                     status: doc.data().status || 'active',
                     verificationStatus: doc.data().verificationStatus
-                })).filter(u => !(u.role === 'lecturer' && u.verificationStatus !== 'verified'));
+                }));
                 setUsers(usersList);
             } catch (error) {
                 console.error("Error fetching users:", error);
@@ -104,7 +104,7 @@ export const UserManagementPage = () => {
         <div className="flex h-screen overflow-hidden bg-[#F3F4F6] dark:bg-[#0D1117] text-gray-900 dark:text-gray-300 font-sans transition-colors duration-200">
             <Sidebar 
                 isCollapsed={isSidebarCollapsed} 
-                toggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)} 
+                toggleSidebar={toggleSidebar} 
                 role="admin"
             />
             

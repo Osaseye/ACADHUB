@@ -48,6 +48,8 @@ service cloud.firestore {
         resource.data.studentId == request.auth.uid || 
         isAdmin() ||
         resource.data.supervisorId == request.auth.uid || 
+        // Allow any user to ONLY increment the 'views' counter
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['views']) ||
         // Allow strict update of verification fields by any lecturer if they are the verifier
         (
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'verifiedBy', 'verifiedAt', 'lecturerFeedback']) && 
@@ -59,9 +61,18 @@ service cloud.firestore {
 
       // --- Internal Notes Subcollection ---
       match /notes/{noteId} {
-        // Only lecturers/admins can read/write notes
-        allow read: if isAuthenticated() && (isLecturer() || isAdmin());
-        allow create: if isAuthenticated() && (isLecturer() || isAdmin());
+        // Only supervisor, approved lecturers, or admins can read/write notes
+        function hasNoteAccess() {
+           let proj = get(/databases/$(database)/documents/projects/$(projectId)).data;
+           return isAdmin() || 
+                  (isLecturer() && (
+                     proj.supervisorId == request.auth.uid || 
+                     (proj.keys().hasAll(['approvedLecturerIds']) && request.auth.uid in proj.approvedLecturerIds)
+                  ));
+        }
+
+        allow read: if isAuthenticated() && hasNoteAccess();
+        allow create: if isAuthenticated() && hasNoteAccess();
         allow update, delete: if isAuthenticated() && (resource.data.authorId == request.auth.uid || isAdmin());
       }
     }

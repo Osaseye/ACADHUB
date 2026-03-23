@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import Prism from "prismjs";
 import "prismjs/components/prism-python";
 import "prismjs/themes/prism-tomorrow.css"; // Dark theme
-import "prismjs/themes/prism-coy.css";      // Light theme (optional, but CSS conflicts might occur if simply importing both. 
 // A better approach for Prism themes in light/dark mode with exact control is usually manual CSS or specialized dynamic imports.
 // For now, I will use Tailwind classes to style the container and let Prism handle the syntax colors which are usually fine in both or typically dark-oriented code blocks are acceptable in light mode too for contrast.)
 // However, the user specifically asked for Light Mode in the code window.
