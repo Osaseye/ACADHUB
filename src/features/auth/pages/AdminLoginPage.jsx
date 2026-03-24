@@ -21,8 +21,7 @@ export const AdminLoginPage = () => {
 
     try {
         // LOGIN FLOW
-        const userCredential = await login(email, password);
-        const user = userCredential.user;
+        const user = await login(email, password);
         
         // Verify Admin Role
         const docRef = doc(db, "users", user.uid);
