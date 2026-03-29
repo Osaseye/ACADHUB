@@ -16,7 +16,7 @@ import { db, app } from '../../../config/firebase';
 import { useAuth } from '../../../context/AuthContext';
 import { toast } from 'sonner';
 import ReactMarkdown from 'react-markdown';
-import { getFunctions, httpsCallable } from 'firebase/functions';
+import { generateAcademicInsight } from '../../../utils/AI';
 import { Sidebar } from '../../../components/layout/Sidebar';
 import { useSidebar } from '../../../hooks/useSidebar';
 import { PageLoader } from '../../../components/common/PageLoader';
@@ -160,13 +160,11 @@ export const RepositoryDetailPage = () => {
         setGeneratingInsight(true);
         setInsightError(null);
         try {
-            const functions = getFunctions(app);
-            const generateProjectInsight = httpsCallable(functions, 'generateProjectInsight');
-            const result = await generateProjectInsight({ projectId: id });
-            setAiInsight(result.data.insight);
-        } catch (error) {
-            console.error("Error generating insight:", error);
-            setInsightError("Failed to generate insights. Please try again later.");
+            const insightText = await generateAcademicInsight(
+                project.title, 
+                project.abstract || project.description
+            );
+            setAiInsight(insightText);
         } finally {
             setGeneratingInsight(false);
         }
